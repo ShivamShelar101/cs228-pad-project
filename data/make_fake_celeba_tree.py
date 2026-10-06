@@ -24,7 +24,8 @@ def build(dst, split, n_subjects, per_class, rng, labels):
                 arr = np.clip(rng.normal(base, 40, (240, 200, 3)), 0, 255).astype("uint8")
                 name = f"{i:06d}"
                 Image.fromarray(arr).save(d / f"{name}.jpg")
-                (d / f"{name}_BB.txt").write_text("50 40 120 140 0.99\n")
+                box = "10 10 150 180 0.99" if i % 3 == 0 else "80 70 60 70 0.99"  # every 3rd runs off the photo
+                (d / f"{name}_BB.txt").write_text(box + "\n")
                 lab = [0] * 44
                 lab[40] = st
                 lab[43] = 0 if cls == "live" else 1

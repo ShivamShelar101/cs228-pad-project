@@ -64,3 +64,6 @@ Send me the numbers when you have them and I will add a results slide and fill i
 - The stability rule is a single-dataset simplification of the CVPR paper's method, not a reproduction.
 - The attacker sees the model's gradients (white-box), which is an easier setting than the real world.
 - Spoof images are print and replay types only (photo, poster, A4, PC, pad, phone).
+- In CelebA-Spoof the live photos come from the CelebA celebrity set and the spoof photos were captured separately,
+  so a model can pick up on photo style as well as real spoof cues. Face crops that would have run off the photo are
+  skipped for both classes, because black padding was twice as common in spoof images (60% vs 33% in a check).

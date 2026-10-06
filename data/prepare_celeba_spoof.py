@@ -6,6 +6,7 @@ from raw CelebA-Spoof, with every image cropped to the face.
   while the label files still list the full dataset).
 - Faces are cropped with CelebA-Spoof's *_BB.txt boxes, because the demo app sends
   face crops.
+- Crops that would run off the photo are skipped (black bars were 2x as common in spoof images).
 - val comes from different people than train; test comes from the official test split.
 
 Layout (found automatically, or pass --root):
@@ -42,20 +43,25 @@ def find_root(src, max_depth=7):
     raise SystemExit(f"Could not find metas/intra_test under {src}. Pass --root <folder that holds metas/ and Data/>.")
 
 
-def crop_face(img, bb_path, bbox_inc=1.5):
-    """Square crop around the face box (box coords are given on a 224x224 grid)."""
+def crop_face(img, bb_path, bbox_inc=1.5, allow_padding=False):
+    """Square crop around the face box (box coords are given on a 224x224 grid).
+    Returns (image, None) or (None, reason). Crops that run off the photo are rejected
+    unless allow_padding=True, because black padding is far more common in spoof images
+    and would let a model cheat."""
     W, H = img.size
     try:
         with open(bb_path) as f:
             x, y, w, h = [float(v) for v in f.readline().strip().split(" ")[:4]]
     except Exception:
-        return None
+        return None, "bad_box"
     x, w = x * W / 224, w * W / 224
     y, h = y * H / 224, h * H / 224
     side = max(w, h) * bbox_inc
     xc, yc = x + w / 2, y + h / 2
     box = (int(xc - side / 2), int(yc - side / 2), int(xc + side / 2), int(yc + side / 2))
-    return img.convert("RGB").crop(box).resize((SIZE, SIZE))  # out-of-frame area becomes black
+    if not allow_padding and (box[0] < 0 or box[1] < 0 or box[2] > W or box[3] > H):
+        return None, "padding"
+    return img.convert("RGB").crop(box).resize((SIZE, SIZE)), None
 
 
 def scan_split(root, split, label_json, spoof_types, need, rng):
@@ -96,38 +102,48 @@ def scan_split(root, split, label_json, spoof_types, need, rng):
     return found
 
 
-def pick(found, subjects, n, rng):
-    """Balanced pick: same number per class, at most n."""
+def pools_for(found, subjects, rng):
+    """Shuffled list of candidate image keys per class."""
     pools = {}
     for cls in ("live", "spoof"):
         pool = [k for s in subjects for k in found[s][cls]]
         rng.shuffle(pool)
         pools[cls] = pool
-    n = min(n, len(pools["live"]), len(pools["spoof"]))
-    return {cls: pools[cls][:n] for cls in pools}
+    return pools
 
 
-def write(root, picks, dst, split):
-    stats = {"written": 0, "missing": 0, "bad_box": 0}
-    for cls, keys in picks.items():
+def write(root, pools, dst, split, n, allow_padding):
+    """Write up to n accepted crops per class, then trim so both classes have the same count."""
+    stats = {"missing": 0, "bad_box": 0, "padding": 0}
+    written = {"live": [], "spoof": []}
+    for cls, keys in pools.items():
         out_dir = Path(dst) / split / cls
         out_dir.mkdir(parents=True, exist_ok=True)
         for key in keys:
+            if len(written[cls]) >= n:
+                break
             img_path = root / key
             try:
-                img = crop_face(Image.open(img_path), str(img_path.with_suffix("")) + "_BB.txt")
+                img, why = crop_face(Image.open(img_path), str(img_path.with_suffix("")) + "_BB.txt",
+                                     allow_padding=allow_padding)
             except FileNotFoundError:
                 stats["missing"] += 1
                 continue
             except Exception:
-                img = None
+                img, why = None, "bad_box"
             if img is None:
-                stats["bad_box"] += 1
+                stats[why] += 1
                 continue
             subject = key.split("/")[2]
-            img.save(out_dir / f"{subject}_{img_path.stem}.jpg", quality=95)
-            stats["written"] += 1
-    print(f"{split}: wrote {stats['written']} images, skipped {stats['missing']} missing, {stats['bad_box']} without a usable face box")
+            out = out_dir / f"{subject}_{img_path.stem}.jpg"
+            img.save(out, quality=95)
+            written[cls].append(out)
+    m = min(len(written["live"]), len(written["spoof"]))
+    for cls in written:
+        for extra in written[cls][m:]:
+            extra.unlink()
+    print(f"{split}: kept {m} per class | skipped {stats['padding']} crops that ran off the photo, "
+          f"{stats['bad_box']} without a face box, {stats['missing']} missing")
 
 
 def main():
@@ -139,6 +155,9 @@ def main():
     ap.add_argument("--test_per_class", type=int, default=600)
     ap.add_argument("--val_frac", type=float, default=0.15, help="fraction of train SUBJECTS used for val")
     ap.add_argument("--spoof_types", type=int, nargs="+", default=PRINT_REPLAY)
+    ap.add_argument("--oversample", type=float, default=3.5,
+                    help="scan this many times more candidates than needed, since many are rejected")
+    ap.add_argument("--allow_padding", action="store_true", help="keep crops that run off the photo (black bars)")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -148,8 +167,8 @@ def main():
     print("dataset root:", root)
     types = set(args.spoof_types)
 
-    train_found = scan_split(root, "train", meta / "train_label.json", types, int(args.per_class * 1.2), rng)
-    test_found = scan_split(root, "test", meta / "test_label.json", types, args.test_per_class, rng)
+    train_found = scan_split(root, "train", meta / "train_label.json", types, int(args.per_class * args.oversample), rng)
+    test_found = scan_split(root, "test", meta / "test_label.json", types, int(args.test_per_class * args.oversample), rng)
     if not train_found:
         raise SystemExit("No training images found on disk. Check --root.")
 
@@ -160,10 +179,11 @@ def main():
     n_train = int(args.per_class * (1 - args.val_frac))
     n_val_imgs = args.per_class - n_train
 
-    write(root, pick(train_found, train_subjects, n_train, rng), args.dst, "train")
-    write(root, pick(train_found, val_subjects, n_val_imgs, rng), args.dst, "val")
+    write(root, pools_for(train_found, train_subjects, rng), args.dst, "train", n_train, args.allow_padding)
+    write(root, pools_for(train_found, val_subjects, rng), args.dst, "val", n_val_imgs, args.allow_padding)
     if test_found:
-        write(root, pick(test_found, sorted(test_found), args.test_per_class, rng), args.dst, "test")
+        write(root, pools_for(test_found, sorted(test_found), rng), args.dst, "test", args.test_per_class,
+              args.allow_padding)
     else:
         print("WARNING: no test images on disk; hold some train subjects out as test instead (tell me).")
     print("done ->", args.dst)
