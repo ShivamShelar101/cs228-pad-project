@@ -17,34 +17,69 @@ import glob
 import json
 import os
 import statistics
+from collections import defaultdict
 
 import torch
 
-from data.dataset import get_dataloaders
+from data.dataset import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders
 from models.baseline import build_model
 from utils.device import get_device
-from attacks.pgd_attack import pgd_attack, attack_success_rate
+from attacks.pgd_attack import pgd_attack
 from evaluation.metrics import compute_pad_metrics
 
 
-def evaluate_checkpoint(ckpt_path, arch, loader, device, live_idx, spoof_idx, eps=8 / 255):
+def accuracy(model, loader, device, live_idx):
+    ok = n = 0
+    with torch.no_grad():
+        for x, y in loader:
+            x, y = x.to(device), y.to(device)
+            ok += ((model(x) > 0) == (y == live_idx)).sum().item()
+            n += len(y)
+    return ok / n
+
+
+def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_idx, spoof_idx,
+                        eps=8 / 255, strong_eps=16 / 255, strong_steps=40):
     model = build_model(arch, pretrained=False).to(device)
     model.load_state_dict(torch.load(ckpt_path, map_location=device))
     model.eval()
 
-    clean = compute_pad_metrics(model, loader, device, live_idx)
+    clean = compute_pad_metrics(model, test_loader, device, live_idx)
 
-    asrs = []
-    for imgs, labels in loader:
-        imgs, labels = imgs.to(device), labels.to(device)
-        spoof_mask = labels == spoof_idx
-        if spoof_mask.sum() == 0:
-            continue
-        adv = pgd_attack(model, imgs[spoof_mask], eps=eps)
-        asrs.append(attack_success_rate(model, adv))
-    asr = sum(asrs) / len(asrs) if asrs else 0.0
+    mean = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
+    std = torch.tensor(IMAGENET_STD, device=device).view(1, 3, 1, 1)
+    lo, hi = (0.0 - mean) / std, (1.0 - mean) / std
+    c = defaultdict(int)
+    for x, y in test_loader:
+        x, y = x.to(device), y.to(device)
+        is_live = y == live_idx
+        xs, xl = x[~is_live], x[is_live]
+        if len(xs):
+            c["n_spoof"] += len(xs)
+            adv = pgd_attack(model, xs, eps=eps)                                   # fakes pushed toward live
+            with torch.no_grad():
+                c["asr"] += (model(adv) > 0).sum().item()
+            adv = pgd_attack(model, xs, eps=strong_eps, steps=strong_steps)        # stronger attacker
+            with torch.no_grad():
+                c["asr_strong"] += (model(adv) > 0).sum().item()
+            noise = (torch.randint(0, 2, xs.shape, device=device).float() * 2 - 1) * eps / std
+            with torch.no_grad():                                                  # control: random noise, no gradient
+                c["apcer_noise"] += (model(torch.max(torch.min(xs + noise, hi), lo)) > 0).sum().item()
+        if len(xl):
+            c["n_live"] += len(xl)
+            adv = pgd_attack(model, xl, eps=eps, target=0.0)                       # real faces pushed toward spoof
+            with torch.no_grad():
+                c["bpcer_adv"] += (model(adv) <= 0).sum().item()
 
-    return {**clean, "ASR": asr}
+    return {
+        **clean,
+        "ASR": c["asr"] / c["n_spoof"],
+        "ASR_strong": c["asr_strong"] / c["n_spoof"],
+        "APCER_noise": c["apcer_noise"] / c["n_spoof"],
+        "BPCER_adv": c["bpcer_adv"] / c["n_live"],
+        "ACC_val": accuracy(model, val_loader, device, live_idx),
+        "ACC_test": accuracy(model, test_loader, device, live_idx),
+    }
 
 
 def summarize(results):
@@ -65,11 +100,13 @@ def main():
     ap.add_argument("--baseline_glob", default="checkpoints/baseline/seed*_best.pt")
     ap.add_argument("--hardened_glob", default="checkpoints/hardened/seed*_epoch14.pt")
     ap.add_argument("--eps", type=float, default=8 / 255, help="attack budget in pixel units (16/255 = 0.0627)")
+    ap.add_argument("--strong_eps", type=float, default=16 / 255, help="budget of the stronger attacker")
+    ap.add_argument("--strong_steps", type=int, default=40)
     ap.add_argument("--out", default="results/eval_summary.json")
     args = ap.parse_args()
 
     device = get_device()
-    _, _, test_loader, class_to_idx = get_dataloaders(args.data_root)
+    _, val_loader, test_loader, class_to_idx = get_dataloaders(args.data_root)
     live_idx, spoof_idx = class_to_idx["live"], class_to_idx["spoof"]
 
     report = {}
@@ -79,7 +116,8 @@ def main():
             print(f"warning: no checkpoints matched {pattern}")
             continue
         results = [
-            evaluate_checkpoint(c, args.arch, test_loader, device, live_idx, spoof_idx, args.eps)
+            evaluate_checkpoint(c, args.arch, test_loader, val_loader, device, live_idx, spoof_idx,
+                                args.eps, args.strong_eps, args.strong_steps)
             for c in ckpts
         ]
         report[name] = {"per_seed": results, "summary": summarize(results)}

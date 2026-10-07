@@ -1,7 +1,7 @@
 """
 Phase 3 (proposal timeline): adversarially-hardened training.
 
-Combines adversarial training (mixing in PGD-perturbed spoof images
+Combines adversarial training (mixing in PGD-perturbed images of BOTH classes
 each batch) with the trajectory-consistency regularizer from losses.py.
 
 For the seed/ablation rigor pass, run this multiple times with
@@ -66,16 +66,21 @@ def main():
             live_labels = (labels == live_idx).float()
             weights = torch.ones(imgs.size(0), device=device)
 
-            spoof_mask = labels == spoof_idx
-            if spoof_mask.any() and args.adv_weight > 0:
-                adv_imgs = pgd_attack(model, imgs[spoof_mask], eps=args.eps)
-                imgs = torch.cat([imgs, adv_imgs], dim=0)
-                live_labels = torch.cat(
-                    [live_labels, torch.zeros(adv_imgs.size(0), device=device)]
-                )
-                weights = torch.cat(
-                    [weights, torch.full((adv_imgs.size(0),), args.adv_weight, device=device)]
-                )  # ground truth is still SPOOF regardless of what the model predicts
+            # Attack BOTH classes: fakes are pushed toward "live" (label stays fake), real faces are
+            # pushed toward "spoof" (label stays real). If only fakes were attacked, the model could
+            # learn the shortcut "attack noise = fake" instead of becoming robust.
+            clean_imgs = imgs
+            extra_imgs, extra_labels = [], []
+            if args.adv_weight > 0:
+                for mask, aim, true_live in ((labels == spoof_idx, 1.0, 0.0), (labels == live_idx, 0.0, 1.0)):
+                    if mask.any():
+                        adv = pgd_attack(model, clean_imgs[mask], eps=args.eps, target=aim)
+                        extra_imgs.append(adv)
+                        extra_labels.append(torch.full((adv.size(0),), true_live, device=device))
+            if extra_imgs:
+                imgs = torch.cat([clean_imgs] + extra_imgs, dim=0)
+                live_labels = torch.cat([live_labels] + extra_labels)
+                weights = torch.cat([weights] + [torch.full_like(l, args.adv_weight) for l in extra_labels])
 
             opt.zero_grad()
             logits, feats = model(imgs, return_features=True)
