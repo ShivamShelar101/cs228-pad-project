@@ -31,9 +31,12 @@ from data.dataset import IMAGENET_MEAN, IMAGENET_STD
 def robust_val_acc(model, val_loader, device, live_idx, eps, max_batches=8):
     """Accuracy on validation images attacked in the harmful direction (fakes toward live, real toward spoof)."""
     ok = n = 0
+    # The val loader is NOT shuffled and sorted by class (all live, then all spoof), so take evenly
+    # spaced batches across the whole set instead of the first few (which would be one class only).
+    step = max(1, len(val_loader) // max_batches)
     for i, (x, y) in enumerate(val_loader):
-        if i >= max_batches:
-            break
+        if i % step != 0:
+            continue
         x, y = x.to(device), y.to(device)
         is_live = y == live_idx
         adv = x.clone()

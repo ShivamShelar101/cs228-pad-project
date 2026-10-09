@@ -64,7 +64,7 @@ def crop_face(img, bb_path, bbox_inc=1.5, allow_padding=False):
     return img.convert("RGB").crop(box).resize((SIZE, SIZE)), None
 
 
-def scan_split(root, split, label_json, spoof_types, need, rng):
+def scan_split(root, split, label_json, spoof_types, need, rng, max_per_subject=0):
     """Walk subject folders (shuffled) and collect images that exist, until each class has `need`."""
     data_dir = root / "Data" / split
     if not data_dir.is_dir():
@@ -80,7 +80,13 @@ def scan_split(root, split, label_json, spoof_types, need, rng):
             d = data_dir / s / cls
             if not d.is_dir():
                 continue
-            for name in os.listdir(d):
+            names = os.listdir(d)
+            if max_per_subject:
+                rng.shuffle(names)  # random pick, so a cap does not always take the same few photos
+            kept = 0
+            for name in names:
+                if max_per_subject and kept >= max_per_subject:
+                    break
                 if not name.lower().endswith(IMG_EXT):
                     continue
                 key = f"Data/{split}/{s}/{cls}/{name}"
@@ -94,6 +100,7 @@ def scan_split(root, split, label_json, spoof_types, need, rng):
                         continue
                 found[s][cls].append(key)
                 counts[cls] += 1
+                kept += 1
         if n % 500 == 0:
             print(f"  {split}: scanned {n}/{len(subjects)} subjects, live={counts['live']} spoof={counts['spoof']}")
         if counts["live"] >= need and counts["spoof"] >= need:
@@ -157,6 +164,9 @@ def main():
     ap.add_argument("--spoof_types", type=int, nargs="+", default=PRINT_REPLAY)
     ap.add_argument("--oversample", type=float, default=3.5,
                     help="scan this many times more candidates than needed, since many are rejected")
+    ap.add_argument("--max_per_subject", type=int, default=0,
+                    help="max images per person per class (0 = no cap). A cap of ~8 spreads the same number of "
+                         "images over many more people, which should help the model generalize to the test set")
     ap.add_argument("--allow_padding", action="store_true", help="keep crops that run off the photo (black bars)")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
@@ -167,8 +177,8 @@ def main():
     print("dataset root:", root)
     types = set(args.spoof_types)
 
-    train_found = scan_split(root, "train", meta / "train_label.json", types, int(args.per_class * args.oversample), rng)
-    test_found = scan_split(root, "test", meta / "test_label.json", types, int(args.test_per_class * args.oversample), rng)
+    train_found = scan_split(root, "train", meta / "train_label.json", types, int(args.per_class * args.oversample), rng, args.max_per_subject)
+    test_found = scan_split(root, "test", meta / "test_label.json", types, int(args.test_per_class * args.oversample), rng, args.max_per_subject)
     if not train_found:
         raise SystemExit("No training images found on disk. Check --root.")
 

@@ -61,18 +61,19 @@ def main():
         series = [("Attack success 8/255", "ASR", "#F5A623"),
                   ("Attack success, stronger attacker", "ASR_strong", "#D9534F"),
                   ("Worst case", "ASR_worst", "#7C3AED"),
+                  ("Real faces rejected after attack", "BPCER_adv", "#3B82F6"),
                   ("ACER on clean images", "ACER", "#2DD4BF")]
         x = range(len(names))
-        width = 0.2
-        fig, ax = plt.subplots(figsize=(10, 4.8))
+        width = 0.16
+        fig, ax = plt.subplots(figsize=(11, 6.2))
         for k, (label, key, color) in enumerate(series):
             vals = [s[key]["mean"] * 100 for _, s in rows]
             errs = [s[key]["std"] * 100 for _, s in rows]
-            ax.bar([i + (k - 1.5) * width for i in x], vals, width, yerr=errs, label=label, color=color)
+            ax.bar([i + (k - 2) * width for i in x], vals, width, yerr=errs, label=label, color=color)
         ax.set_xticks(list(x))
-        ax.set_xticklabels(names, rotation=15, ha="right")
+        ax.set_xticklabels(names, rotation=12, ha="right", fontsize=9)
         ax.set_ylabel("% (lower is better)")
-        ax.legend()
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.22), ncol=2, frameon=False)
         fig.tight_layout()
         fig.savefig(str(out) + ".png", dpi=200)
         print("chart ->", str(out) + ".png")
