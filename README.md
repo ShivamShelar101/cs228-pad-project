@@ -5,7 +5,7 @@ Start with `START_HERE.md`, then `PLAN.md`.
 ## What it does
 1. Trains a ResNet-18 live-vs-spoof detector on face crops from CelebA-Spoof (baseline).
 2. Attacks it with a digital PGD attack (budget 8/255 pixel levels, 10 steps).
-3. Hardens it with adversarial training and a simplified "live-to-spoof direction" regularizer.
+3. Hardens it with adversarial training (attacking both fakes and real faces) and a simplified "live-to-spoof direction" regularizer.
 4. Compares APCER / BPCER / ACER and attack success rate, with ablations and seeds.
 5. Serves baseline and hardened models side by side in a webcam app (FastAPI + React + MediaPipe).
 

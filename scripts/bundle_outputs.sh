@@ -7,7 +7,7 @@ LAST=$(( ${EPOCHS:-5} - 1 ))
 rm -rf bundle bundle.zip && mkdir -p bundle/checkpoints
 for f in checkpoints/baseline/seed*_best.pt; do cp "$f" "bundle/checkpoints/baseline_$(basename "$f")"; done
 for cfg in full adv_only reg_only; do
-  for f in checkpoints/$cfg/seed*_epoch${LAST}.pt; do
+  for f in checkpoints/$cfg/seed*_best.pt; do
     [ -f "$f" ] && cp "$f" "bundle/checkpoints/${cfg}_$(basename "$f")"
   done
 done

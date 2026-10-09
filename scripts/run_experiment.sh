@@ -22,7 +22,7 @@ done
 for cfg in full adv_only reg_only; do
   python -m evaluation.evaluate --data_root $DATA \
       --baseline_glob "checkpoints/baseline/seed*_best.pt" \
-      --hardened_glob "checkpoints/${cfg}/seed*_epoch${LAST}.pt" \
+      --hardened_glob "checkpoints/${cfg}/seed*_best.pt" \
       --out results/eval_${cfg}.json
 done
 

@@ -21,11 +21,11 @@ EXTRA="--no_pretrained" EPOCHS=1 bash scripts/run_experiment.sh ./data_dummy
 
 python -m scripts.make_attacked_images --data_root ./data_dummy \
     --baseline checkpoints/baseline/seed0_best.pt \
-    --hardened checkpoints/full/seed0_epoch0.pt --n 3 --out demo_images
+    --hardened checkpoints/full/seed0_best.pt --n 3 --out demo_images
 EPOCHS=1 bash scripts/bundle_outputs.sh
 
 python -m export.export_onnx --ckpt bundle/checkpoints/baseline_seed0_best.pt --out smoke_baseline.onnx
-python -m export.export_onnx --ckpt bundle/checkpoints/full_seed0_epoch0.pt --out smoke_hardened.onnx
+python -m export.export_onnx --ckpt bundle/checkpoints/full_seed0_best.pt --out smoke_hardened.onnx
 # clean up so the fake results never mix with your real ones
 rm -rf fake_celeba data_dummy checkpoints results demo_images bundle bundle.zip smoke_*.onnx
 echo "SMOKE TEST PASSED"

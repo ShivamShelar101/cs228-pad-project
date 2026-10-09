@@ -16,7 +16,7 @@ import torch.nn.functional as F
 from data.dataset import IMAGENET_MEAN, IMAGENET_STD
 
 
-def pgd_attack(model, images, eps=8 / 255, alpha=2 / 255, steps=10, target=1.0):
+def pgd_attack(model, images, eps=8 / 255, alpha=2 / 255, steps=10, target=1.0, random_start=True):
     """images: (B,3,H,W) normalized. target=1.0 pushes toward 'live' (attack on a fake),
     target=0.0 pushes toward 'spoof' (attack on a real face). Returns adversarial images."""
     was_training = model.training
@@ -29,7 +29,11 @@ def pgd_attack(model, images, eps=8 / 255, alpha=2 / 255, steps=10, target=1.0):
     eps_t, alpha_t = eps / std, alpha / std               # budget in normalized units
 
     images = images.clone().detach()
-    adv = images.clone().detach().requires_grad_(True)
+    adv = images.clone().detach()
+    if random_start:  # start at a random point inside the eps-ball (stronger, avoids gradient masking)
+        adv = adv + (torch.rand_like(adv) * 2 - 1) * eps_t
+        adv = torch.max(torch.min(adv, hi), lo)
+    adv = adv.detach().requires_grad_(True)
     target_live = torch.full((images.size(0),), float(target), device=device)
 
     for _ in range(steps):

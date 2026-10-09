@@ -10,7 +10,7 @@ writeup.
 Usage:
     python -m evaluation.evaluate --data_root ./data_pad \
         --baseline_glob "checkpoints/baseline/seed*_best.pt" \
-        --hardened_glob "checkpoints/hardened/seed*_epoch14.pt"
+        --hardened_glob "checkpoints/hardened/seed*_best.pt"
 """
 import argparse
 import glob
@@ -56,15 +56,23 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
         xs, xl = x[~is_live], x[is_live]
         if len(xs):
             c["n_spoof"] += len(xs)
+            with torch.no_grad():
+                accepted = model(xs) > 0                                           # fooled with no attack at all
             adv = pgd_attack(model, xs, eps=eps)                                   # fakes pushed toward live
             with torch.no_grad():
-                c["asr"] += (model(adv) > 0).sum().item()
+                a1 = model(adv) > 0
+                c["asr"] += a1.sum().item()
             adv = pgd_attack(model, xs, eps=strong_eps, steps=strong_steps)        # stronger attacker
             with torch.no_grad():
-                c["asr_strong"] += (model(adv) > 0).sum().item()
+                a2 = model(adv) > 0
+                c["asr_strong"] += a2.sum().item()
             noise = (torch.randint(0, 2, xs.shape, device=device).float() * 2 - 1) * eps / std
             with torch.no_grad():                                                  # control: random noise, no gradient
-                c["apcer_noise"] += (model(torch.max(torch.min(xs + noise, hi), lo)) > 0).sum().item()
+                a3 = model(torch.max(torch.min(xs + noise, hi), lo)) > 0
+                c["apcer_noise"] += a3.sum().item()
+            # Worst case per image: fooled if accepted clean OR under ANY attack. Cannot be improved by
+            # simply rejecting everything that looks perturbed.
+            c["asr_worst"] += (accepted | a1 | a2 | a3).sum().item()
         if len(xl):
             c["n_live"] += len(xl)
             adv = pgd_attack(model, xl, eps=eps, target=0.0)                       # real faces pushed toward spoof
@@ -75,6 +83,7 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
         **clean,
         "ASR": c["asr"] / c["n_spoof"],
         "ASR_strong": c["asr_strong"] / c["n_spoof"],
+        "ASR_worst": c["asr_worst"] / c["n_spoof"],
         "APCER_noise": c["apcer_noise"] / c["n_spoof"],
         "BPCER_adv": c["bpcer_adv"] / c["n_live"],
         "ACC_val": accuracy(model, val_loader, device, live_idx),
@@ -98,7 +107,7 @@ def main():
     ap.add_argument("--data_root", required=True)
     ap.add_argument("--arch", default="resnet18")
     ap.add_argument("--baseline_glob", default="checkpoints/baseline/seed*_best.pt")
-    ap.add_argument("--hardened_glob", default="checkpoints/hardened/seed*_epoch14.pt")
+    ap.add_argument("--hardened_glob", default="checkpoints/hardened/seed*_best.pt")
     ap.add_argument("--eps", type=float, default=8 / 255, help="attack budget in pixel units (16/255 = 0.0627)")
     ap.add_argument("--strong_eps", type=float, default=16 / 255, help="budget of the stronger attacker")
     ap.add_argument("--strong_steps", type=int, default=40)

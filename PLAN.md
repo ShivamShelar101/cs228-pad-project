@@ -11,11 +11,19 @@ before spending more time. Note how long it took.
 Done when you have `results/report.md` and a downloaded `bundle.zip`.
 
 ## Stage 3: read the pilot and decide
-- Baseline clean accuracy should be well above 50% after the first epoch. If it stays near 50%, the data is wrong.
-- If the attack succeeds under about 10% of the time on the baseline, it is too weak to show anything: rerun the
-  evaluation with a bigger budget, `--eps 0.0627` (16/255), and report both.
-- If the hardened model does not beat the baseline, that is still a result. Try `--adv_weight 2.0` (attacked images
-  count double) or more epochs once. If it still does not help, say so honestly.
+`results/report.md` has three tables: clean performance, robustness, and validation vs test accuracy. Read them in this order:
+- **Validation vs test accuracy.** If a model scores ~99% on validation but much lower on test, the detector is leaning on dataset
+  quirks and every number built on it is shaky. Run `python -m evaluation.diagnose ...` (see its docstring) to see which test
+  fakes it accepts.
+- **Attack success: 8/255 vs the stronger attacker.** If the stronger attacker succeeds far more often, the robustness is shallow.
+  Report both numbers.
+- **Fakes accepted under random noise.** If a hardened model accepts far fewer fakes under random noise than it does on clean
+  images, it has learned "noise means fake" instead of becoming robust. (The first pilot did exactly this: only fakes were
+  attacked during training. Training now attacks both classes.)
+- **Real faces rejected after attack.** The hardened model should not reject attacked real faces much more than the baseline.
+- If the attack succeeds under about 10% of the time on the baseline, it is too weak to show anything: rerun the evaluation with
+  `--eps 0.0627` (16/255) and report both.
+- If the hardened model does not beat the baseline, that is still a result. Try `--adv_weight 2.0` or more epochs once.
 - If clean accuracy drops while attack success also drops, that is the normal trade-off: report both numbers.
 
 ## Stage 4: the full run (as long as you like)
@@ -33,7 +41,7 @@ cd ~/Downloads/cs228-pad-project && source venv/bin/activate
 unzip -o ~/Downloads/bundle.zip
 ls bundle/checkpoints                      # exact names; the commands below assume EPOCHS=5, seed 0
 python -m export.export_onnx --ckpt bundle/checkpoints/baseline_seed0_best.pt --out app/backend/model_baseline.onnx
-python -m export.export_onnx --ckpt bundle/checkpoints/full_seed0_epoch4.pt   --out app/backend/model_hardened.onnx
+python -m export.export_onnx --ckpt bundle/checkpoints/full_seed0_best.pt   --out app/backend/model_hardened.onnx
 
 # terminal 1
 cd app/backend && uvicorn main:app --port 8000

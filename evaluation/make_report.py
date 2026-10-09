@@ -38,12 +38,13 @@ def main():
     t1 = ["| Model | APCER (fakes accepted) | BPCER (real rejected) | ACER |",
           "|---|---|---|---|"]
     t2 = ["| Model | Attack success (8/255, 10 steps) | Attack success (stronger: 16/255, 40 steps) | "
-          "Fakes accepted under random noise (control) | Real faces rejected after attack |",
-          "|---|---|---|---|---|"]
+          "Fakes accepted under random noise (control) | Real faces rejected after attack | "
+          "Worst case (fake fools it clean OR under any attack) |",
+          "|---|---|---|---|---|---|"]
     t3 = ["| Model | Accuracy on validation | Accuracy on test |", "|---|---|---|"]
     for name, s in rows:
         t1.append(f"| {name} | {pct(s['APCER'])} | {pct(s['BPCER'])} | {pct(s['ACER'])} |")
-        t2.append(f"| {name} | {pct(s['ASR'])} | {pct(s['ASR_strong'])} | {pct(s['APCER_noise'])} | {pct(s['BPCER_adv'])} |")
+        t2.append(f"| {name} | {pct(s['ASR'])} | {pct(s['ASR_strong'])} | {pct(s['APCER_noise'])} | {pct(s['BPCER_adv'])} | {pct(s['ASR_worst'])} |")
         t3.append(f"| {name} | {pct(s['ACC_val'])} | {pct(s['ACC_test'])} |")
     md = ("**Clean performance on the test set**\n\n" + "\n".join(t1) +
           "\n\n**Robustness (lower is better in every column)**\n\n" + "\n".join(t2) +
@@ -59,14 +60,15 @@ def main():
         names = [n for n, _ in rows]
         series = [("Attack success 8/255", "ASR", "#F5A623"),
                   ("Attack success, stronger attacker", "ASR_strong", "#D9534F"),
+                  ("Worst case", "ASR_worst", "#7C3AED"),
                   ("ACER on clean images", "ACER", "#2DD4BF")]
         x = range(len(names))
-        width = 0.27
+        width = 0.2
         fig, ax = plt.subplots(figsize=(10, 4.8))
         for k, (label, key, color) in enumerate(series):
             vals = [s[key]["mean"] * 100 for _, s in rows]
             errs = [s[key]["std"] * 100 for _, s in rows]
-            ax.bar([i + (k - 1) * width for i in x], vals, width, yerr=errs, label=label, color=color)
+            ax.bar([i + (k - 1.5) * width for i in x], vals, width, yerr=errs, label=label, color=color)
         ax.set_xticks(list(x))
         ax.set_xticklabels(names, rotation=15, ha="right")
         ax.set_ylabel("% (lower is better)")
