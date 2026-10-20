@@ -1,0 +1,9 @@
+torch
+torchvision
+onnx
+onnxscript
+onnxruntime
+scikit-learn
+pillow
+numpy
+matplotlib

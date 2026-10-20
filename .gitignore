@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+data_pad/
+data_dummy/
+checkpoints/
+results/
+*.onnx
+*.onnx.data
+node_modules/
+.DS_Store
+fake_celeba/
+demo_images/
+demo_smoke/
+bundle/
+bundle.zip
+dist/
