@@ -80,7 +80,7 @@ def scan_split(root, split, label_json, spoof_types, need, rng, max_per_subject=
             d = data_dir / s / cls
             if not d.is_dir():
                 continue
-            names = os.listdir(d)
+            names = sorted(os.listdir(d))  # sorted: os.listdir order differs between machines
             if max_per_subject:
                 rng.shuffle(names)  # random pick, so a cap does not always take the same few photos
             kept = 0
@@ -145,6 +145,8 @@ def write(root, pools, dst, split, n, allow_padding):
             out = out_dir / f"{subject}_{img_path.stem}.jpg"
             img.save(out, quality=95)
             written[cls].append(out)
+            if len(written[cls]) % 500 == 0:
+                print(f"  {split}/{cls}: {len(written[cls])}/{n} crops written", flush=True)
     m = min(len(written["live"]), len(written["spoof"]))
     for cls in written:
         for extra in written[cls][m:]:

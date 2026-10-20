@@ -29,8 +29,10 @@ from data.dataset import IMAGENET_MEAN, IMAGENET_STD
 
 
 def robust_val_acc(model, val_loader, device, live_idx, eps, max_batches=8):
-    """Accuracy on validation images attacked in the harmful direction (fakes toward live, real toward spoof)."""
-    ok = n = 0
+    """Accuracy on validation images attacked in the harmful direction (fakes toward live, real toward spoof).
+    Returns (overall, attacked-fake accuracy, attacked-real accuracy)."""
+    ok = {True: 0, False: 0}
+    n = {True: 0, False: 0}
     # The val loader is NOT shuffled and sorted by class (all live, then all spoof), so take evenly
     # spaced batches across the whole set instead of the first few (which would be one class only).
     step = max(1, len(val_loader) // max_batches)
@@ -46,9 +48,13 @@ def robust_val_acc(model, val_loader, device, live_idx, eps, max_batches=8):
             adv[is_live] = pgd_attack(model, x[is_live], eps=eps, steps=5, target=0.0)
         model.eval()
         with torch.no_grad():
-            ok += ((model(adv) > 0) == is_live).sum().item()
-        n += len(y)
-    return ok / max(n, 1)
+            correct = (model(adv) > 0) == is_live
+        for cls in (True, False):
+            ok[cls] += correct[is_live == cls].sum().item()
+            n[cls] += (is_live == cls).sum().item()
+    fake = ok[False] / max(n[False], 1)
+    real = ok[True] / max(n[True], 1)
+    return (ok[True] + ok[False]) / max(n[True] + n[False], 1), fake, real
 
 
 def main():
@@ -66,11 +72,22 @@ def main():
     ap.add_argument("--eps", type=float, default=8 / 255, help="training attack budget in pixel units")
     ap.add_argument("--noise_weight", type=float, default=1.0,
                      help="weight of randomly-noised copies (true labels). Teaches 'noise is not an attack signal'; 0 disables")
+    ap.add_argument("--fake_adv_weight", type=float, default=None,
+                    help="weight of attacked FAKES (default: --adv_weight). Raise it if fakes stay easy to attack")
+    ap.add_argument("--real_adv_weight", type=float, default=None,
+                    help="weight of attacked REAL faces (default: --adv_weight)")
+    ap.add_argument("--attack_steps", type=int, default=10, help="PGD steps used during training")
+    ap.add_argument("--split_bn", action="store_true",
+                    help="forward clean / attacked / noisy images in separate passes (separate batch-norm statistics)")
     ap.add_argument("--no_pretrained", action="store_true", help="skip ImageNet weights (smoke tests)")
     ap.add_argument("--out", default="checkpoints/hardened")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
+    fake_w = args.adv_weight if args.fake_adv_weight is None else args.fake_adv_weight
+    real_w = args.adv_weight if args.real_adv_weight is None else args.real_adv_weight
+    print(f"hardened training: lr={args.lr} eps={args.eps:.4f} fake_adv_weight={fake_w} real_adv_weight={real_w} "
+          f"noise_weight={args.noise_weight} reg_weight={args.reg_weight} split_bn={args.split_bn}")
     device = get_device()
     os.makedirs(args.out, exist_ok=True)
 
@@ -91,38 +108,37 @@ def main():
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
             live_labels = (labels == live_idx).float()
-            weights = torch.ones(imgs.size(0), device=device)
 
-            # Attack BOTH classes: fakes are pushed toward "live" (label stays fake), real faces are
-            # pushed toward "spoof" (label stays real). If only fakes were attacked, the model could
-            # learn the shortcut "attack noise = fake" instead of becoming robust.
-            clean_imgs = imgs
-            extra_imgs, extra_labels = [], []
+            # Each group = (images, true live-labels, loss weight). Attack BOTH classes: fakes are pushed
+            # toward "live" (label stays fake), real faces toward "spoof" (label stays real). Attacking only
+            # fakes lets the model learn the shortcut "attack noise = fake" instead of becoming robust.
+            groups = [(imgs, live_labels, 1.0)]
             if args.adv_weight > 0:
-                for mask, aim, true_live in ((labels == spoof_idx, 1.0, 0.0), (labels == live_idx, 0.0, 1.0)):
-                    if mask.any():
-                        adv = pgd_attack(model, clean_imgs[mask], eps=args.eps, target=aim)
-                        extra_imgs.append(adv)
-                        extra_labels.append(torch.full((adv.size(0),), true_live, device=device))
+                for mask, aim, true_live, w in ((labels == spoof_idx, 1.0, 0.0, fake_w),
+                                                (labels == live_idx, 0.0, 1.0, real_w)):
+                    if mask.any() and w > 0:
+                        adv = pgd_attack(model, imgs[mask], eps=args.eps, steps=args.attack_steps, target=aim)
+                        groups.append((adv, torch.full((adv.size(0),), true_live, device=device), w))
             if args.noise_weight > 0 and args.adv_weight > 0:
                 # Control against the shortcut "perturbed = fake": random +-eps noise on BOTH classes, true labels.
                 m = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
                 sd = torch.tensor(IMAGENET_STD, device=device).view(1, 3, 1, 1)
-                noise = (torch.randint(0, 2, clean_imgs.shape, device=device).float() * 2 - 1) * args.eps / sd
-                noisy = torch.max(torch.min(clean_imgs + noise, (1 - m) / sd), (0 - m) / sd)
-                extra_imgs.append(noisy)
-                extra_labels.append((labels == live_idx).float())
-                n_noise = noisy.size(0)
-            if extra_imgs:
-                imgs = torch.cat([clean_imgs] + extra_imgs, dim=0)
-                live_labels = torch.cat([live_labels] + extra_labels)
-                ws = [torch.full_like(l, args.adv_weight) for l in extra_labels]
-                if args.noise_weight > 0 and args.adv_weight > 0:
-                    ws[-1] = torch.full_like(extra_labels[-1], args.noise_weight)
-                weights = torch.cat([weights] + ws)
+                noise = (torch.randint(0, 2, imgs.shape, device=device).float() * 2 - 1) * args.eps / sd
+                noisy = torch.max(torch.min(imgs + noise, (1 - m) / sd), (0 - m) / sd)
+                groups.append((noisy, live_labels, args.noise_weight))
+
+            live_labels = torch.cat([g[1] for g in groups])
+            weights = torch.cat([torch.full_like(g[1], g[2]) for g in groups])
 
             opt.zero_grad()
-            logits, feats = model(imgs, return_features=True)
+            if args.split_bn:
+                # One forward pass per group, so batch-norm statistics are never computed over a mix of
+                # clean and attacked images (a mixed batch can blunt what the model learns from the attacks).
+                outs = [model(g[0], return_features=True) for g in groups]
+                logits = torch.cat([o[0] for o in outs])
+                feats = torch.cat([o[1] for o in outs])
+            else:
+                logits, feats = model(torch.cat([g[0] for g in groups]), return_features=True)
             loss = (criterion(logits, live_labels) * weights).sum() / weights.sum()
             if args.reg_weight > 0:
                 loss = loss + args.reg_weight * trajectory_consistency_loss(
@@ -133,10 +149,14 @@ def main():
             opt.step()
 
         val_acc = evaluate_acc(model, val_loader, device, live_idx)
-        rob = robust_val_acc(model, val_loader, device, live_idx, args.eps) if args.adv_weight > 0 else float("nan")
+        if args.adv_weight > 0:
+            rob, rob_fake, rob_real = robust_val_acc(model, val_loader, device, live_idx, args.eps)
+        else:
+            rob = rob_fake = rob_real = float("nan")
         # Keep the epoch that is good on BOTH clean and attacked validation images (weaker of the two).
         score = min(val_acc, rob) if args.adv_weight > 0 else val_acc
-        print(f"epoch {epoch} done: clean val_acc={val_acc:.4f}  attacked val_acc={rob:.4f}  score={score:.4f}")
+        print(f"epoch {epoch} done: clean val_acc={val_acc:.4f}  attacked val_acc={rob:.4f} "
+              f"(fakes {rob_fake:.4f}, real {rob_real:.4f})  score={score:.4f}", flush=True)
         torch.save(model.state_dict(), f"{args.out}/seed{args.seed}_epoch{epoch}.pt")
         if score > best:
             best = score

@@ -21,7 +21,10 @@ from collections import defaultdict
 
 import torch
 
-from data.dataset import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders
+from torch.utils.data import DataLoader, Subset
+from torchvision import datasets
+
+from data.dataset import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders, get_transforms
 from models.baseline import build_model
 from utils.device import get_device
 from attacks.pgd_attack import pgd_attack
@@ -39,7 +42,7 @@ def accuracy(model, loader, device, live_idx):
 
 
 def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_idx, spoof_idx,
-                        eps=8 / 255, strong_eps=16 / 255, strong_steps=40):
+                        eps=8 / 255, strong_eps=16 / 255, strong_steps=40, sweep=()):
     model = build_model(arch, pretrained=False).to(device)
     model.load_state_dict(torch.load(ckpt_path, map_location=device))
     model.eval()
@@ -73,6 +76,10 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
             # Worst case per image: fooled if accepted clean OR under ANY attack. Cannot be improved by
             # simply rejecting everything that looks perturbed.
             c["asr_worst"] += (accepted | a1 | a2 | a3).sum().item()
+            for e in sweep:                                                        # attack-strength sweep
+                adv = pgd_attack(model, xs, eps=e / 255, alpha=max(e / 4, 0.5) / 255, steps=10)
+                with torch.no_grad():
+                    c[f"sweep_{e:g}"] += (model(adv) > 0).sum().item()
         if len(xl):
             c["n_live"] += len(xl)
             adv = pgd_attack(model, xl, eps=eps, target=0.0)                       # real faces pushed toward spoof
@@ -84,6 +91,7 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
         "ASR": c["asr"] / c["n_spoof"],
         "ASR_strong": c["asr_strong"] / c["n_spoof"],
         "ASR_worst": c["asr_worst"] / c["n_spoof"],
+        **{f"ASR_eps{e:g}": c[f"sweep_{e:g}"] / c["n_spoof"] for e in sweep},
         "APCER_noise": c["apcer_noise"] / c["n_spoof"],
         "BPCER_adv": c["bpcer_adv"] / c["n_live"],
         "ACC_val": accuracy(model, val_loader, device, live_idx),
@@ -111,11 +119,23 @@ def main():
     ap.add_argument("--eps", type=float, default=8 / 255, help="attack budget in pixel units (16/255 = 0.0627)")
     ap.add_argument("--strong_eps", type=float, default=16 / 255, help="budget of the stronger attacker")
     ap.add_argument("--strong_steps", type=int, default=40)
+    ap.add_argument("--split", default="test", choices=["test", "val", "train"],
+                    help="which images to evaluate on. 'train' checks whether a model even learned its own training set")
+    ap.add_argument("--limit", type=int, default=0, help="evaluate on a random subset of this many images (0 = all)")
+    ap.add_argument("--sweep", type=float, nargs="*", default=[],
+                    help="also measure attack success at these budgets (in /255 units), e.g. --sweep 1 2 4 8 16")
     ap.add_argument("--out", default="results/eval_summary.json")
     args = ap.parse_args()
 
     device = get_device()
     _, val_loader, test_loader, class_to_idx = get_dataloaders(args.data_root)
+    if args.split != "test" or args.limit:
+        ds = datasets.ImageFolder(f"{args.data_root}/{args.split}", transform=get_transforms(False))
+        if args.limit and args.limit < len(ds):
+            idx = torch.randperm(len(ds), generator=torch.Generator().manual_seed(0))[: args.limit].tolist()
+            ds = Subset(ds, sorted(idx))
+        test_loader = DataLoader(ds, batch_size=32, shuffle=False, num_workers=2)
+        print(f"evaluating on {args.split} ({len(ds)} images)")
     live_idx, spoof_idx = class_to_idx["live"], class_to_idx["spoof"]
 
     report = {}
@@ -126,7 +146,7 @@ def main():
             continue
         results = [
             evaluate_checkpoint(c, args.arch, test_loader, val_loader, device, live_idx, spoof_idx,
-                                args.eps, args.strong_eps, args.strong_steps)
+                                args.eps, args.strong_eps, args.strong_steps, tuple(args.sweep))
             for c in ckpts
         ]
         report[name] = {"per_seed": results, "summary": summarize(results)}

@@ -46,9 +46,18 @@ def main():
         t1.append(f"| {name} | {pct(s['APCER'])} | {pct(s['BPCER'])} | {pct(s['ACER'])} |")
         t2.append(f"| {name} | {pct(s['ASR'])} | {pct(s['ASR_strong'])} | {pct(s['APCER_noise'])} | {pct(s['BPCER_adv'])} | {pct(s['ASR_worst'])} |")
         t3.append(f"| {name} | {pct(s['ACC_val'])} | {pct(s['ACC_test'])} |")
+    sweep_keys = sorted({k for _, s in rows for k in s if k.startswith("ASR_eps")},
+                        key=lambda k: float(k[len("ASR_eps"):]))
+    t4 = []
+    if sweep_keys:
+        t4 = ["| Model | " + " | ".join(f"{k[len('ASR_eps'):]}/255" for k in sweep_keys) + " |",
+              "|---|" + "---|" * len(sweep_keys)]
+        for name, s in rows:
+            t4.append(f"| {name} | " + " | ".join(pct(s[k]) if k in s else "-" for k in sweep_keys) + " |")
     md = ("**Clean performance on the test set**\n\n" + "\n".join(t1) +
           "\n\n**Robustness (lower is better in every column)**\n\n" + "\n".join(t2) +
-          "\n\n**Validation vs test accuracy**\n\n" + "\n".join(t3) + "\n")
+          "\n\n**Validation vs test accuracy**\n\n" + "\n".join(t3) + "\n" +
+          ("\n**Attack success vs attack budget (10 steps)**\n\n" + "\n".join(t4) + "\n" if t4 else ""))
     Path(str(out) + ".md").write_text(md)
     print(md)
 

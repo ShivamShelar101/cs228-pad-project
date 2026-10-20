@@ -86,7 +86,7 @@ def main():
                             ("all fakes", "all")):
                 groups[g][name][0] += 1
                 groups[g][name][1] += int(live)
-        print(f"\n===== {split.upper()} fakes: share the baseline accepts as live =====")
+        print(f"\n===== {split.upper()} fakes: share {Path(args.ckpt).parent.name} accepts as live =====")
         for g, rows in groups.items():
             report(g, {k: tuple(v) for k, v in rows.items()})
 

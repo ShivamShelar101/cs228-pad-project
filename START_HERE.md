@@ -35,15 +35,18 @@ git push -u --force origin main
 Check: open https://github.com/ShivamShelar101/cs228-pad-project and look for `scripts/run_experiment.sh`
 (the old code had `run_crunch.sh`).
 
-## 4. Run the experiment on Kaggle (hands-off)
-1. kaggle.com -> Create -> New Notebook. Delete the empty cell. File -> Import Notebook -> upload
-   `notebooks/kaggle_pipeline.ipynb`. Name it `cs228-pipeline`.
-2. Session options: **Accelerator = GPU T4 x2, Internet = On**.
-3. **Save Version -> Save & Run All (Commit) -> Save.** Do not run the cells yourself, and do not leave an
-   interactive session idle (it times out). You can close the tab; the run takes about 2 hours.
-4. Later: Versions -> newest -> should say Completed. Output tab -> download `bundle2.zip`. The log holds the
-   report tables (cell 6) and the per-fake-type tables (cell 7).
-   (`kaggle_run.ipynb` is the older cell-by-cell notebook; use it only for debugging.)
+## 4. Run the experiment on Kaggle (hands-off, two notebooks)
+**A. Data, once (`notebooks/kaggle_data.ipynb`, CPU only, about 40 min).**
+New Notebook -> File -> Import Notebook -> this file. Name it `cs228-data`. Add Input -> Datasets ->
+`celeba-spoof-for-face-antispoofing` (attentionlayer241). Session options: Accelerator None, Internet On.
+Save Version -> Save & Run All (Commit). Its Output keeps `data_pad2`.
+
+**B. Experiment (`notebooks/kaggle_pipeline.ipynb`, GPU, about 3 hours).**
+New Notebook -> Import this file. Name it `cs228-pipeline`. Add Input: the same dataset (Datasets tab) AND
+your `cs228-data` notebook (Notebooks tab). GPU T4 x2, Internet On. Save Version -> Save & Run All (Commit).
+Results: Versions -> newest -> Output -> `bundle3.zip`; the log has all tables.
+
+Never run long cells interactively and leave the tab idle: interactive sessions time out.
 
 ## 5. Demo and report
 See `PLAN.md`.
