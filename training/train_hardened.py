@@ -43,9 +43,9 @@ def robust_val_acc(model, val_loader, device, live_idx, eps, max_batches=8):
         is_live = y == live_idx
         adv = x.clone()
         if (~is_live).any():
-            adv[~is_live] = pgd_attack(model, x[~is_live], eps=eps, steps=5, target=1.0)
+            adv[~is_live] = pgd_attack(model, x[~is_live], eps=eps, alpha=max(eps / 4, 0.5 / 255), steps=5, target=1.0)
         if is_live.any():
-            adv[is_live] = pgd_attack(model, x[is_live], eps=eps, steps=5, target=0.0)
+            adv[is_live] = pgd_attack(model, x[is_live], eps=eps, alpha=max(eps / 4, 0.5 / 255), steps=5, target=0.0)
         model.eval()
         with torch.no_grad():
             correct = (model(adv) > 0) == is_live
@@ -109,31 +109,39 @@ def main():
             imgs, labels = imgs.to(device), labels.to(device)
             live_labels = (labels == live_idx).float()
 
-            # Each group = (images, true live-labels, loss weight). Attack BOTH classes: fakes are pushed
-            # toward "live" (label stays fake), real faces toward "spoof" (label stays real). Attacking only
-            # fakes lets the model learn the shortcut "attack noise = fake" instead of becoming robust.
-            groups = [(imgs, live_labels, 1.0)]
+            # Each group = (images, true live-labels, per-image loss weights). Every group mixes BOTH classes:
+            # a batch-norm pass over a single-class batch normalizes away the live/spoof difference itself.
+            ones = torch.ones_like(live_labels)
+            groups = [(imgs, live_labels, ones)]
             if args.adv_weight > 0:
+                # Attack BOTH classes: fakes pushed toward "live" (label stays fake), real faces toward "spoof"
+                # (label stays real). Attacking only fakes lets the model learn "attack noise = fake".
+                adv_x, adv_y, adv_w = [], [], []
                 for mask, aim, true_live, w in ((labels == spoof_idx, 1.0, 0.0, fake_w),
                                                 (labels == live_idx, 0.0, 1.0, real_w)):
                     if mask.any() and w > 0:
-                        adv = pgd_attack(model, imgs[mask], eps=args.eps, steps=args.attack_steps, target=aim)
-                        groups.append((adv, torch.full((adv.size(0),), true_live, device=device), w))
+                        adv = pgd_attack(model, imgs[mask], eps=args.eps, alpha=max(args.eps / 4, 0.5 / 255),
+                                         steps=args.attack_steps, target=aim)
+                        adv_x.append(adv)
+                        adv_y.append(torch.full((adv.size(0),), true_live, device=device))
+                        adv_w.append(torch.full((adv.size(0),), float(w), device=device))
+                if adv_x:
+                    groups.append((torch.cat(adv_x), torch.cat(adv_y), torch.cat(adv_w)))
             if args.noise_weight > 0 and args.adv_weight > 0:
                 # Control against the shortcut "perturbed = fake": random +-eps noise on BOTH classes, true labels.
                 m = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
                 sd = torch.tensor(IMAGENET_STD, device=device).view(1, 3, 1, 1)
                 noise = (torch.randint(0, 2, imgs.shape, device=device).float() * 2 - 1) * args.eps / sd
                 noisy = torch.max(torch.min(imgs + noise, (1 - m) / sd), (0 - m) / sd)
-                groups.append((noisy, live_labels, args.noise_weight))
+                groups.append((noisy, live_labels, ones * args.noise_weight))
 
             live_labels = torch.cat([g[1] for g in groups])
-            weights = torch.cat([torch.full_like(g[1], g[2]) for g in groups])
+            weights = torch.cat([g[2] for g in groups])
 
             opt.zero_grad()
             if args.split_bn:
-                # One forward pass per group, so batch-norm statistics are never computed over a mix of
-                # clean and attacked images (a mixed batch can blunt what the model learns from the attacks).
+                # One forward pass per group (clean / attacked / noisy), each containing both classes, so
+                # batch-norm statistics are never computed over a mix of clean and attacked images.
                 outs = [model(g[0], return_features=True) for g in groups]
                 logits = torch.cat([o[0] for o in outs])
                 feats = torch.cat([o[1] for o in outs])
