@@ -54,10 +54,20 @@ def main():
               "|---|" + "---|" * len(sweep_keys)]
         for name, s in rows:
             t4.append(f"| {name} | " + " | ".join(pct(s[k]) if k in s else "-" for k in sweep_keys) + " |")
+    cond_keys = sorted({k for _, s in rows for k in s if k.startswith("ASRc_eps")},
+                       key=lambda k: float(k[len("ASRc_eps"):]))
+    t5 = []
+    if cond_keys:
+        t5 = ["| Model | " + " | ".join(f"{k[len('ASRc_eps'):]}/255" for k in cond_keys) + " |",
+              "|---|" + "---|" * len(cond_keys)]
+        for name, s in rows:
+            t5.append(f"| {name} | " + " | ".join(pct(s[k]) if k in s else "-" for k in cond_keys) + " |")
     md = ("**Clean performance on the test set**\n\n" + "\n".join(t1) +
           "\n\n**Robustness (lower is better in every column)**\n\n" + "\n".join(t2) +
           "\n\n**Validation vs test accuracy**\n\n" + "\n".join(t3) + "\n" +
-          ("\n**Attack success vs attack budget (10 steps)**\n\n" + "\n".join(t4) + "\n" if t4 else ""))
+          ("\n**Attack success vs attack budget (10 steps)**\n\n" + "\n".join(t4) + "\n" if t4 else "") +
+          ("\n**Attack success on fakes the model caught WITHOUT an attack (10 steps)**\n\n" +
+           "\n".join(t5) + "\n" if t5 else ""))
     Path(str(out) + ".md").write_text(md)
     print(md)
 

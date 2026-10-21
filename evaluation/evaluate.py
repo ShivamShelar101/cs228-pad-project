@@ -65,6 +65,9 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
             with torch.no_grad():
                 a1 = model(adv) > 0
                 c["asr"] += a1.sum().item()
+            rejected = ~accepted                                                   # fakes caught with no attack
+            c["n_rejected"] += rejected.sum().item()
+            c["asrc"] += (a1 & rejected).sum().item()
             adv = pgd_attack(model, xs, eps=strong_eps, steps=strong_steps)        # stronger attacker
             with torch.no_grad():
                 a2 = model(adv) > 0
@@ -75,11 +78,17 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
                 c["apcer_noise"] += a3.sum().item()
             # Worst case per image: fooled if accepted clean OR under ANY attack. Cannot be improved by
             # simply rejecting everything that looks perturbed.
-            c["asr_worst"] += (accepted | a1 | a2 | a3).sum().item()
+            worst = accepted | a1 | a2 | a3
             for e in sweep:                                                        # attack-strength sweep
                 adv = pgd_attack(model, xs, eps=e / 255, alpha=max(e / 4, 0.5) / 255, steps=10)
                 with torch.no_grad():
-                    c[f"sweep_{e:g}"] += (model(adv) > 0).sum().item()
+                    ae = model(adv) > 0
+                c[f"sweep_{e:g}"] += ae.sum().item()
+                c[f"sweepc_{e:g}"] += (ae & rejected).sum().item()
+                worst |= ae
+            # Worst case includes every sweep budget, so a model that only resists ONE attack size
+            # (a shortcut, not robustness) cannot look good here.
+            c["asr_worst"] += worst.sum().item()
         if len(xl):
             c["n_live"] += len(xl)
             adv = pgd_attack(model, xl, eps=eps, target=0.0)                       # real faces pushed toward spoof
@@ -92,6 +101,9 @@ def evaluate_checkpoint(ckpt_path, arch, test_loader, val_loader, device, live_i
         "ASR_strong": c["asr_strong"] / c["n_spoof"],
         "ASR_worst": c["asr_worst"] / c["n_spoof"],
         **{f"ASR_eps{e:g}": c[f"sweep_{e:g}"] / c["n_spoof"] for e in sweep},
+        # Conditional: share of the fakes the model rejected WITHOUT an attack that the attack then flips.
+        "ASRc": c["asrc"] / max(c["n_rejected"], 1),
+        **{f"ASRc_eps{e:g}": c[f"sweepc_{e:g}"] / max(c["n_rejected"], 1) for e in sweep},
         "APCER_noise": c["apcer_noise"] / c["n_spoof"],
         "BPCER_adv": c["bpcer_adv"] / c["n_live"],
         "ACC_val": accuracy(model, val_loader, device, live_idx),

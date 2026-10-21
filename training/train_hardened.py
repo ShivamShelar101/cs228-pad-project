@@ -79,6 +79,8 @@ def main():
     ap.add_argument("--attack_steps", type=int, default=10, help="PGD steps used during training")
     ap.add_argument("--split_bn", action="store_true",
                     help="forward clean / attacked / noisy images in separate passes (separate batch-norm statistics)")
+    ap.add_argument("--init", default=None,
+                    help="start from this checkpoint (e.g. the trained baseline) instead of ImageNet weights")
     ap.add_argument("--no_pretrained", action="store_true", help="skip ImageNet weights (smoke tests)")
     ap.add_argument("--out", default="checkpoints/hardened")
     args = ap.parse_args()
@@ -94,7 +96,10 @@ def main():
     train_loader, val_loader, _, class_to_idx = get_dataloaders(args.data_root, args.batch_size)
     live_idx, spoof_idx = class_to_idx["live"], class_to_idx["spoof"]
 
-    model = build_model(args.arch, pretrained=not args.no_pretrained).to(device)
+    model = build_model(args.arch, pretrained=not args.no_pretrained and not args.init).to(device)
+    if args.init:
+        model.load_state_dict(torch.load(args.init, map_location=device))
+        print(f"initialized from {args.init}")
     opt = AdamW(model.parameters(), lr=args.lr)
     criterion = nn.BCEWithLogitsLoss(reduction="none")
     centroids = {
