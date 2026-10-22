@@ -51,12 +51,12 @@ an ablation. (vi) The webcam demo moves to the final milestone.}
 per image (40 face attributes plus spoof type, illumination and environment) and a face bounding box per image.
 It is distributed for non-commercial research only; we use the Kaggle copy
 (\texttt{attentionlayer241/\allowbreak celeba-spoof-\allowbreak for-face-\allowbreak antispoofing}, about 753K files, 58.8\,GB) and its official
-intra-test protocol, whose train and test subjects are disjoint. No data is committed to the repository; the
+intra-test protocol, whose train and test subjects are intended to be disjoint. No data is committed to the repository; the
 README gives the download and preparation commands.
 
 \textbf{Characteristics.} The copy has 8,192 training and 1,004 test subject folders. Labels: live or spoof,
 spoof type (1--10), illumination (normal, strong, back, dark), environment (indoor, outdoor). Source images have
-varied resolutions (median \pending{W$\times$H} px from \texttt{eda.py}).
+varied resolutions; every model input is a $224\times224$ face crop (below).
 
 \textbf{Cleaning and preprocessing.} The script \texttt{data/\allowbreak prepare\_celeba\_\allowbreak spoof.py} applies five steps:
 (1) keep only labelled images present on disk and only the six print/replay types;
@@ -65,14 +65,15 @@ carries attack evidence but the full frame is dominated by scene content;
 (3) \emph{reject} crops that run outside the photo: on our first load, zero-padded borders appeared in 33\% of
 live but 60\% of spoof crops, a shortcut a CNN would exploit; after the fix, dark-edge rates fell to 2.3\% and 5.3\%;
 (4) take at most 8 images per subject per class, which spreads the same budget over about four times as many
-people (2,000+ training subjects instead of about 500);
+people (1,814 training and validation subjects instead of about 500);
 (5) resize to $224\times224$ and normalize with ImageNet statistics; training adds horizontal flips and colour
 jitter. Sampling is deterministic (sorted listings, seed 42). No hand-made features or PCA are used: the CNN
 learns directly from pixels, and Sec.~III shows simple image statistics do not separate the classes.
 
 \textbf{Schema sanity and quality.} No sample lacked a face box. Besides the padding artifact above, we checked
-subject leakage (\pending{0} subjects shared between splits; disjoint by construction) and near-duplicates via
-16$\times$16 image hashes (\pending{N} groups, \pending{N} across splits, \pending{N} with conflicting labels).
+subject leakage (none between train and validation; one subject ID, of 384, appears in both CelebA-Spoof's
+train and test folders, inherited from the source split) and near-duplicates via 16$\times$16 image hashes
+(5 groups, all within one split, none with conflicting labels). No crop lacked labels or metadata.
 Shortcomings for our problem: one dataset only; spoofs are re-captures of celebrity photos; and the test split's
 spoof-type mix differs from training (Fig.~\ref{fig:balance}), which we return to in Sec.~IV.
 
@@ -83,9 +84,9 @@ from the official test split. Classes are balanced by construction.
 \caption{Prepared face crops (live / spoof).}\label{tab:split}
 \begin{tabular}{lccc}\toprule
 Split & Crops per class & Subjects & Source \\\midrule
-Train & 2,550 / 2,550 & \pending{n} & CelebA-Spoof train \\
-Val & 450 / 450 & \pending{n} & held-out train subjects \\
-Test & 600 / 600 & \pending{n} & CelebA-Spoof test \\\bottomrule
+Train & 2,550 / 2,550 & 1,552 & CelebA-Spoof train \\
+Val & 450 / 450 & 262 & held-out train subjects \\
+Test & 600 / 600 & 384 & CelebA-Spoof test \\\bottomrule
 \end{tabular}
 \end{table}
 
@@ -103,23 +104,39 @@ test spoofs against 17.6\% of training spoofs, a shift that later explains most 
 \begin{figure}[t]\centering
 \fig{univariate.png}{\linewidth}
 \caption{Univariate image statistics (brightness, contrast, saturation, sharpness, high-frequency energy) as
-histograms (top) and box plots (bottom), live vs spoof. \pending{one sentence on the overlap seen}}
+histograms (top) and box plots (bottom), live vs spoof. Spoofs are on average less saturated and less sharp,
+but every distribution overlaps heavily, so no single statistic separates the classes.}
 \label{fig:uni}
 \end{figure}
 
 \begin{figure}[t]\centering
-\fig{correlation.png}{0.49\linewidth}\hfill\fig{by_type.png}{0.49\linewidth}
-\caption{Left: correlation of the statistics with each other and with the label. Right: sharpness and
-high-frequency energy by presentation type. \pending{one sentence: which types sit close to live}}
+\fig{correlation.png}{0.49\linewidth}\hfill\fig{scatter.png}{0.49\linewidth}
+\caption{Left: Pearson correlation of the statistics with each other and with the label; no statistic exceeds
+$|r|=0.40$ with the label. Right: sharpness against high-frequency energy, where spoofs spread wider but
+overlap live faces almost everywhere.}
 \label{fig:bi}
+\end{figure}
+
+\begin{figure}[t]\centering
+\fig{by_type.png}{\linewidth}
+\caption{Sharpness and high-frequency energy by presentation type. Phone screens are the blurriest; PC screens
+have the widest spread, and their sharp upper tail overlaps live faces.}
+\label{fig:type}
 \end{figure}
 
 \textbf{Class balance} (Fig.~\ref{fig:balance}). Equal class counts mean accuracy is not misleading, but because
 the two error types have different costs we always report APCER and BPCER separately, with counts.
 The spoof-type imbalance between train and test motivates per-type error analysis rather than oversampling,
 since the test mix is fixed by the protocol.
-\textbf{Univariate} (Fig.~\ref{fig:uni}) and \textbf{bivariate} (Fig.~\ref{fig:bi}) analyses show
-\pending{summary from the figures and eda\_summary.json correlations}.
+\textbf{Univariate} (Fig.~\ref{fig:uni}). Brightness is nearly identical (mean 113 live vs 109 spoof); spoofs
+are less saturated (93 vs 71) and less sharp ($\log_{10}$ Laplacian variance 2.52 vs 2.15), as expected from
+re-capture through a print or a screen, yet the box plots overlap over most of their range.
+\textbf{Bivariate} (Fig.~\ref{fig:bi}). Correlations with the label are moderate at best (sharpness 0.40,
+saturation 0.35, contrast 0.20, high-frequency energy 0.19, brightness 0.06). Sharpness and high-frequency
+energy are correlated ($r=0.60$), so they carry overlapping texture information.
+\textbf{By type} (Fig.~\ref{fig:type}). Printed photos sit closest to live on these statistics, and the sharpest
+PC-screen replays overlap live faces. Together these results justify a learned model and predict the
+baseline's failure on sharp screen replays (Sec.~IV-D).
 
 % =====================================================================
 \section{Baseline and Preliminary Results}
@@ -130,66 +147,86 @@ AdamW (lr $10^{-4}$), batch 32, 5 epochs; the epoch with the best validation acc
 
 \subsection{Metrics with counts}
 \begin{table}[t]\centering\small
-\caption{Baseline on the test set (600 live, 600 spoof). Mean $\pm$ std over 3 seeds; counts for seed 0.}
+\caption{Baseline on the test set (600 live, 600 spoof). Mean $\pm$ std over 3 seeds; counts (out of 600) per seed.}
 \label{tab:base}
 \begin{tabular}{lcc}\toprule
  & Default ($p{=}0.5$) & Operating point \\\midrule
-Threshold & 0.500 & \pending{val EER thr.} \\
-APCER & \pending{\% (n/600)} & \pending{} \\
-BPCER & \pending{\% (n/600)} & \pending{} \\
-ACER & \pending{} & \pending{} \\
-EER (val / test) & \multicolumn{2}{c}{\pending{}} \\
-AUC (val / test) & \multicolumn{2}{c}{\pending{}} \\\bottomrule
+Threshold & 0.500 & $0.45\pm0.29$ \\
+APCER & $28.8\pm8.7$\% & $31.3\pm3.6$\% \\
+\quad seed 0 / 1 / 2 & 135 / 232 / 151 & 163 / 204 / 196 \\
+BPCER & $1.3\pm0.9$\% & $1.3\pm0.4$\% \\
+\quad seed 0 / 1 / 2 & 10 / 2 / 12 & 8 / 10 / 5 \\
+ACER & $15.1\pm3.9$\% & $16.3\pm1.8$\% \\
+EER (val / test) & \multicolumn{2}{c}{$1.3\pm0.4$\% / $10.6\pm2.5$\%} \\
+AUC (val / test) & \multicolumn{2}{c}{$0.999\pm0.000$ / $0.963\pm0.013$} \\\bottomrule
 \end{tabular}
 \end{table}
-Table~\ref{tab:base}. For reference, the pilot run (seed 0, same data) gave APCER 22.5\% (135/600), BPCER 2.0\%
-(12/600) and ACER 12.2\%, with validation accuracy 99.1\% against test accuracy 87.8\%; two further pilot runs
-gave APCER 20.2\% and 19.8\%.
+Table~\ref{tab:base}. Real faces are almost always accepted (BPCER about 1\%), but 22--39\% of attacks pass,
+and the spread across seeds (135 to 232 false accepts) shows that the baseline's behaviour on the shifted test
+distribution is unstable, while validation is nearly perfect for every seed. Seed 0 reproduces the earlier
+pilot run on CUDA exactly in false accepts (135/600).
 
 \subsection{Threshold analysis}
 \begin{figure}[t]\centering
 \fig{far_frr.png}{0.49\linewidth}\hfill\fig{roc.png}{0.42\linewidth}
 \caption{Left: APCER (FAR) and BPCER (FRR) against the threshold on validation and test, with the chosen
-operating point. Right: ROC curves. \pending{one sentence on the val--test gap visible here}}
+operating point (seed 0). Right: ROC curves. Validation is almost perfectly separable (AUC 0.999), while on
+test the APCER curve stays high over most thresholds.}
 \label{fig:thr}
 \end{figure}
 We choose the operating point on \emph{validation} (its EER threshold) and apply it unchanged to test, so the test
-set never tunes the model (Fig.~\ref{fig:thr}). \pending{state the threshold and the resulting APCER/BPCER, and
-why this point is preferred, e.g. for a kiosk where a false accept is costlier than a retry}.
+set never tunes the model (Fig.~\ref{fig:thr}). For seed 0 this threshold is 0.304, giving APCER 27.2\% (163/600)
+and BPCER 1.3\% (8/600) on test. Because validation contains almost no errors, its EER threshold is poorly
+determined (0.30, 0.79 and 0.26 for the three seeds) and does not transfer: on test it raises APCER slightly
+instead of balancing the two errors (test EER is 10.6\%). For a kiosk, a false accept is costlier than asking a
+real user to retry, so the preferred point is a high threshold; on test, a threshold near 0.9 would bring APCER
+toward 10\% at a BPCER near 8\% (Fig.~\ref{fig:thr}), but choosing it honestly needs a validation set that
+contains the hard screen replays. We report the validation-chosen point and treat this as a finding.
 
 \subsection{Error analysis}
 \begin{table}[t]\centering\small
-\caption{Test spoofs accepted as live by spoof type (pilot, seed 0, $p{=}0.5$).}\label{tab:type}
+\caption{Test spoofs accepted as live by spoof type (seed 0, $p{=}0.5$).}\label{tab:type}
 \begin{tabular}{lrr}\toprule
 Spoof type & Accepted / total & Rate \\\midrule
-PC screen & 128 / 243 & 52.7\% \\
-Poster & 3 / 16 & 18.8\% \\
-Photo & 3 / 76 & 3.9\% \\
+PC screen & 127 / 243 & 52.3\% \\
+Poster & 5 / 16 & 31.2\% \\
+Photo & 2 / 76 & 2.6\% \\
 Phone screen & 1 / 202 & 0.5\% \\
 A4 print & 0 / 39 & 0.0\% \\
 Pad screen & 0 / 24 & 0.0\% \\\midrule
 All & 135 / 600 & 22.5\% \\\bottomrule
 \end{tabular}
 \end{table}
-Errors concentrate in one attack type (Table~\ref{tab:type}): PC-screen replays account for 128 of the 135
+Errors concentrate in one attack type (Table~\ref{tab:type}): PC-screen replays account for 127 of the 135
 false accepts, while every training fake, PC screens included, is rejected. Failures also cluster in normal
-lighting (29.5\% accepted) and indoor scenes (25.7\%), against 0--4\% under strong, back or dark light and 3.5\%
+lighting (29.8\% accepted) and indoor scenes (25.9\%), against 0--3\% under strong, back or dark light and 2.3\%
 outdoors. Inspecting the accepted PC-screen crops shows sharp, well-lit captures with no visible pixel grid or
 moir\'e, while correctly rejected ones show that texture. \textbf{Hypothesis:} the baseline relies on fine
 screen texture, which disappears in high-quality captures; the test split contains many more of these than
-training, which also explains the gap between validation (99\%) and test (88\%) accuracy.
-\pending{add the false-accept grid figure if space allows}
+training, which also explains the gap between validation and test. The most confident false accepts
+(Fig.~\ref{fig:fa}) repeat a few subjects, so the 135 errors are not independent: several come from re-captures
+of the same person. Among the eight rejected real faces, several are themselves photos of prints or magazine
+pages in the source data, so part of the BPCER reflects label ambiguity rather than model error.
+
+\begin{figure}[t]\centering
+\fig{false_accepts.png}{\linewidth}
+\caption{The 12 most confident test false accepts (seed 0, operating point). Most are sharp PC-screen
+re-captures, and the same subjects recur.}
+\label{fig:fa}
+\end{figure}
 
 \subsection{Preliminary robustness results}
 A 10-step PGD attack flips 100\% of the baseline's test fakes at every budget from $1/255$ to $16/255$.
 Adversarial training at $2/255$ lowers this: among fakes the hardened model rejects without attack, a $2/255$
 attack flips 29\% (11\% at $1/255$), reproduced across two training schemes, at the cost of a higher clean
-APCER (about 42\% vs 20\%), concentrated on screen replays. Training at $8/255$ with up-weighted fakes appeared
+APCER (about 42\% vs 22\%), concentrated on screen replays. Training at $8/255$ with up-weighted fakes appeared
 to give 2\% attack success, but the budget sweep exposed it: smaller attacks still succeed 98\% of the time,
 which is impossible for a truly robust model and indicates gradient masking~\cite{athalye2018obfuscated}.
 
-\textbf{Reproducibility.} All numbers in this section come from \texttt{notebooks/kaggle\_checkpoint.ipynb}
-at commit \pending{hash}; the repository README maps each script to its section.
+\textbf{Reproducibility.} Every number and figure in Secs.~II--IV-D comes from one run of
+\texttt{scripts/\allowbreak run\_checkpoint\_\allowbreak mac.sh} (equivalently \texttt{notebooks/\allowbreak kaggle\_\allowbreak checkpoint.ipynb}) at commit
+\texttt{b20209a}, on an Apple M-series GPU (PyTorch MPS); results on CUDA differ slightly. The robustness numbers
+in Sec.~IV-E are preliminary single-seed Kaggle runs. The README maps each script to its section.
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}

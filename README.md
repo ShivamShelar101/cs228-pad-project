@@ -39,6 +39,14 @@ python -m evaluation.by_spoof_type --src <dataset folder> --data_root ./data_pad
    (creates `.venv`, installs `requirements.txt`, trains seeds 0-2, runs threshold analysis, EDA and error analysis,
    writes `bundle_checkpoint.zip`). Rerunning skips seeds already trained. Results on MPS differ slightly from CUDA.
 
+
+### Defense run on a Mac (after the checkpoint run)
+
+`caffeinate -i bash scripts/run_defense_mac.sh` adversarially fine-tunes each baseline seed at 2/255 (8 epochs),
+then evaluates the budget sweep (1-16/255), conditional and worst-case attack success, the validation-chosen
+operating point, and per-type errors. Several hours on an M-series Mac; rerunning skips finished seeds.
+Output: `results_defense.zip`.
+
 ## What it does
 1. Trains a ResNet-18 live-vs-spoof detector on face crops from CelebA-Spoof (baseline).
 2. Attacks it with a digital PGD attack (budget 8/255 pixel levels, 10 steps).
