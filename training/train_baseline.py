@@ -18,6 +18,7 @@ from torch.optim import AdamW
 from data.dataset import get_dataloaders
 from models.baseline import build_model
 from utils.device import get_device
+from utils.seed import set_seed
 
 
 def evaluate_acc(model, loader, device, live_idx):
@@ -45,7 +46,7 @@ def main():
     ap.add_argument("--out", default="checkpoints/baseline")
     args = ap.parse_args()
 
-    torch.manual_seed(args.seed)
+    set_seed(args.seed)
     device = get_device()
     os.makedirs(args.out, exist_ok=True)
 

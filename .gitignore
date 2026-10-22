@@ -15,3 +15,9 @@ demo_smoke/
 bundle/
 bundle.zip
 dist/
+data_pad*/
+bundle*.zip
+data_trcheck/
+.venv/
+celeba_meta/
+mac_data.zip

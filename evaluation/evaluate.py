@@ -27,6 +27,7 @@ from torchvision import datasets
 from data.dataset import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders, get_transforms
 from models.baseline import build_model
 from utils.device import get_device
+from utils.seed import set_seed
 from attacks.pgd_attack import pgd_attack
 from evaluation.metrics import compute_pad_metrics
 
@@ -137,7 +138,9 @@ def main():
     ap.add_argument("--sweep", type=float, nargs="*", default=[],
                     help="also measure attack success at these budgets (in /255 units), e.g. --sweep 1 2 4 8 16")
     ap.add_argument("--out", default="results/eval_summary.json")
+    ap.add_argument("--seed", type=int, default=0, help="seed for the random attack starts and noise control")
     args = ap.parse_args()
+    set_seed(args.seed)
 
     device = get_device()
     _, val_loader, test_loader, class_to_idx = get_dataloaders(args.data_root)

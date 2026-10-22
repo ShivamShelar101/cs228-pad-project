@@ -22,6 +22,7 @@ from torch.optim import AdamW
 from data.dataset import get_dataloaders
 from models.baseline import build_model
 from utils.device import get_device
+from utils.seed import set_seed
 from attacks.pgd_attack import pgd_attack
 from training.losses import trajectory_consistency_loss, update_centroids
 from training.train_baseline import evaluate_acc
@@ -85,7 +86,7 @@ def main():
     ap.add_argument("--out", default="checkpoints/hardened")
     args = ap.parse_args()
 
-    torch.manual_seed(args.seed)
+    set_seed(args.seed)
     fake_w = args.adv_weight if args.fake_adv_weight is None else args.fake_adv_weight
     real_w = args.adv_weight if args.real_adv_weight is None else args.real_adv_weight
     print(f"hardened training: lr={args.lr} eps={args.eps:.4f} fake_adv_weight={fake_w} real_adv_weight={real_w} "

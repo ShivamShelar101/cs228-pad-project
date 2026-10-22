@@ -2,6 +2,43 @@
 
 Start with `START_HERE.md`, then `PLAN.md`.
 
+## Reproducing the checkpoint report
+Every number and figure in the checkpoint report comes from `notebooks/kaggle_checkpoint.ipynb`
+(seeds 0, 1, 2; the commit hash is written to `results/COMMIT.txt`).
+
+**Environment** (Python 3.10+): `pip install -r requirements.txt` (on a Mac: `bash scripts/setup_mac.sh`).
+
+**Data (not in this repo).** CelebA-Spoof is used under its non-commercial research license and is not
+redistributed here. Get the Kaggle copy `attentionlayer241/celeba-spoof-for-face-antispoofing` (attach it to a
+Kaggle notebook, or `kagglehub.dataset_download(...)`), then build the face crops:
+```bash
+python -m data.prepare_celeba_spoof --src <dataset folder> --dst ./data_pad2 \
+    --per_class 3000 --test_per_class 600 --max_per_subject 8      # deterministic: same images every time
+```
+**Baseline, threshold analysis, EDA, error analysis**
+```bash
+for s in 0 1 2; do python -m training.train_baseline --data_root ./data_pad2 --epochs 5 --seed $s --out checkpoints/baseline; done
+python -m evaluation.threshold_analysis --data_root ./data_pad2 --ckpt_glob "checkpoints/baseline/seed*_best.pt" --out results/threshold
+python -m evaluation.eda --src <dataset folder> --data_root ./data_pad2 --out results/eda
+python -m evaluation.by_spoof_type --src <dataset folder> --data_root ./data_pad2 --ckpt checkpoints/baseline/seed0_best.pt
+```
+| Script | Report section |
+|---|---|
+| `data/prepare_celeba_spoof.py` | II. data loading, cropping, subject-disjoint split, balancing |
+| `evaluation/eda.py` | II. quality checks (leakage, duplicates); III. all EDA figures |
+| `training/train_baseline.py` | IV. baseline training (seeded via `utils/seed.py`) |
+| `evaluation/threshold_analysis.py` | IV. rates with counts, EER, FAR/FRR, ROC, operating point, error grids |
+| `evaluation/by_spoof_type.py` | IV. error analysis by spoof type, lighting, environment |
+
+
+### Running the checkpoint on a Mac (Apple GPU, no Kaggle quota)
+
+1. On Kaggle, run `notebooks/kaggle_export_mac.ipynb` as a CPU commit (inputs: your `cs228-data` notebook and the
+   CelebA-Spoof dataset). Download `mac_data.zip` from its Output. It holds licensed data: never commit it.
+2. From the repo root: `caffeinate -i bash scripts/run_checkpoint_mac.sh ~/Downloads/mac_data.zip`
+   (creates `.venv`, installs `requirements.txt`, trains seeds 0-2, runs threshold analysis, EDA and error analysis,
+   writes `bundle_checkpoint.zip`). Rerunning skips seeds already trained. Results on MPS differ slightly from CUDA.
+
 ## What it does
 1. Trains a ResNet-18 live-vs-spoof detector on face crops from CelebA-Spoof (baseline).
 2. Attacks it with a digital PGD attack (budget 8/255 pixel levels, 10 steps).

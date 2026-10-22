@@ -1,0 +1,196 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx,booktabs,amsmath,xcolor,cite}
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{figures/}}
+\emergencystretch=1.5em
+
+% Blue = scope changed since the proposal (required by the checkpoint instructions).
+\newcommand{\scope}[1]{\textcolor{blue}{#1}}
+% Red = value filled in from the final reproducible run (bundle_checkpoint); remove before submitting.
+\newcommand{\pending}[1]{\textcolor{red}{[#1]}}
+% Figure that appears automatically once the PNG is copied into report/figures/.
+\newcommand{\fig}[2]{\IfFileExists{figures/#1}{\includegraphics[width=#2]{#1}}%
+  {\fbox{\parbox[c][2.6cm][c]{\dimexpr#2-2\fboxsep-2\fboxrule\relax}{\centering\footnotesize\textcolor{red}{figure pending:\\\detokenize{#1}}}}}}
+
+\begin{document}
+\title{Adversarially Robust Face Presentation Attack Detection:\\ Checkpoint Report}
+\author{\IEEEauthorblockN{Shivam Shelar}
+\IEEEauthorblockA{Department of Computer Science, San Jos\'e State University\\
+\textbf{Project nature:} \emph{Build} an adversarially robust face presentation attack detector.}}
+\maketitle
+
+% =====================================================================
+\section{Problem Statement and Motivation}
+\textbf{Problem.} Face presentation attack detection (PAD) decides, from a single RGB face image $x$, whether the
+camera sees a live person or a presentation attack (a printed photo, a poster, or a face replayed on a screen).
+We learn a classifier $f(x)\in[0,1]$, the probability that $x$ is live, and report the ISO/IEC 30107-3
+error rates~\cite{iso30107}: APCER (attacks accepted as live), BPCER (live faces rejected), and their mean ACER.
+The project goal is a detector that keeps low APCER and BPCER not only on clean images but also when an attacker
+adds a small, bounded perturbation $\delta$ ($\|\delta\|_\infty\le\epsilon$) to a spoof image to make it pass.
+
+\textbf{Why it matters.} Face verification now gates phone unlock, payments, remote identity checks and
+self-service kiosks, and print or replay spoofs remain the cheapest way to attack it~\cite{yu2023survey}.
+Learned PAD models are themselves vulnerable to adversarial examples: AdvGen showed that
+perturbations which survive printing can push spoofs past state-of-the-art PAD systems~\cite{patnaik2023advgen}.
+A PAD model that is accurate but trivially fooled therefore gives a false sense of security.
+
+\textbf{Scope changes since the proposal (in blue).}
+\scope{(i) We use the print and replay attack types of CelebA-Spoof (photo, poster, A4 print, PC, pad and phone
+screens) and exclude masks, which a kiosk camera would face rarely and which add a different problem.
+(ii) Training uses a balanced, subject-capped subset (Sec.~II) rather than all 625K images, to fit the free GPU
+budget. (iii) The attack remains digital (PGD~\cite{madry2018pgd}) as the stand-in for AdvGen's physical attack.
+(iv) Preliminary experiments showed that robustness at the common $8/255$ budget is not achievable here
+(Sec.~IV-E), so the defense now targets small budgets ($\le 2/255$) and every model is evaluated with a sweep
+over $\epsilon\in\{1,2,4,8,16\}/255$. (v) The trajectory regularizer adapted from~\cite{sun2023sa} is kept only as
+an ablation. (vi) The webcam demo moves to the final milestone.}
+
+% =====================================================================
+\section{Data Engineering}
+\textbf{Origin.} CelebA-Spoof~\cite{zhang2020celebaspoof}: 625,537 images of 10,177 subjects with 43 attributes
+per image (40 face attributes plus spoof type, illumination and environment) and a face bounding box per image.
+It is distributed for non-commercial research only; we use the Kaggle copy
+(\texttt{attentionlayer241/\allowbreak celeba-spoof-\allowbreak for-face-\allowbreak antispoofing}, about 753K files, 58.8\,GB) and its official
+intra-test protocol, whose train and test subjects are disjoint. No data is committed to the repository; the
+README gives the download and preparation commands.
+
+\textbf{Characteristics.} The copy has 8,192 training and 1,004 test subject folders. Labels: live or spoof,
+spoof type (1--10), illumination (normal, strong, back, dark), environment (indoor, outdoor). Source images have
+varied resolutions (median \pending{W$\times$H} px from \texttt{eda.py}).
+
+\textbf{Cleaning and preprocessing.} The script \texttt{data/\allowbreak prepare\_celeba\_\allowbreak spoof.py} applies five steps:
+(1) keep only labelled images present on disk and only the six print/replay types;
+(2) crop a square of 1.5$\times$ the annotated face box, because the background (screen bezel, paper edge)
+carries attack evidence but the full frame is dominated by scene content;
+(3) \emph{reject} crops that run outside the photo: on our first load, zero-padded borders appeared in 33\% of
+live but 60\% of spoof crops, a shortcut a CNN would exploit; after the fix, dark-edge rates fell to 2.3\% and 5.3\%;
+(4) take at most 8 images per subject per class, which spreads the same budget over about four times as many
+people (2,000+ training subjects instead of about 500);
+(5) resize to $224\times224$ and normalize with ImageNet statistics; training adds horizontal flips and colour
+jitter. Sampling is deterministic (sorted listings, seed 42). No hand-made features or PCA are used: the CNN
+learns directly from pixels, and Sec.~III shows simple image statistics do not separate the classes.
+
+\textbf{Schema sanity and quality.} No sample lacked a face box. Besides the padding artifact above, we checked
+subject leakage (\pending{0} subjects shared between splits; disjoint by construction) and near-duplicates via
+16$\times$16 image hashes (\pending{N} groups, \pending{N} across splits, \pending{N} with conflicting labels).
+Shortcomings for our problem: one dataset only; spoofs are re-captures of celebrity photos; and the test split's
+spoof-type mix differs from training (Fig.~\ref{fig:balance}), which we return to in Sec.~IV.
+
+\textbf{Split.} Table~\ref{tab:split}. Validation subjects are a random 15\% of training subjects; test comes
+from the official test split. Classes are balanced by construction.
+
+\begin{table}[t]\centering\small
+\caption{Prepared face crops (live / spoof).}\label{tab:split}
+\begin{tabular}{lccc}\toprule
+Split & Crops per class & Subjects & Source \\\midrule
+Train & 2,550 / 2,550 & \pending{n} & CelebA-Spoof train \\
+Val & 450 / 450 & \pending{n} & held-out train subjects \\
+Test & 600 / 600 & \pending{n} & CelebA-Spoof test \\\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Exploratory Data Analysis}
+All figures are produced by \texttt{evaluation/eda.py}.
+
+\begin{figure}[t]\centering
+\fig{class_balance.png}{0.49\linewidth}\hfill\fig{spoof_types.png}{0.49\linewidth}
+\caption{Class balance and spoof-type mix per split. Classes are balanced, but PC-screen replays are 40.5\% of
+test spoofs against 17.6\% of training spoofs, a shift that later explains most baseline errors.}
+\label{fig:balance}
+\end{figure}
+
+\begin{figure}[t]\centering
+\fig{univariate.png}{\linewidth}
+\caption{Univariate image statistics (brightness, contrast, saturation, sharpness, high-frequency energy) as
+histograms (top) and box plots (bottom), live vs spoof. \pending{one sentence on the overlap seen}}
+\label{fig:uni}
+\end{figure}
+
+\begin{figure}[t]\centering
+\fig{correlation.png}{0.49\linewidth}\hfill\fig{by_type.png}{0.49\linewidth}
+\caption{Left: correlation of the statistics with each other and with the label. Right: sharpness and
+high-frequency energy by presentation type. \pending{one sentence: which types sit close to live}}
+\label{fig:bi}
+\end{figure}
+
+\textbf{Class balance} (Fig.~\ref{fig:balance}). Equal class counts mean accuracy is not misleading, but because
+the two error types have different costs we always report APCER and BPCER separately, with counts.
+The spoof-type imbalance between train and test motivates per-type error analysis rather than oversampling,
+since the test mix is fixed by the protocol.
+\textbf{Univariate} (Fig.~\ref{fig:uni}) and \textbf{bivariate} (Fig.~\ref{fig:bi}) analyses show
+\pending{summary from the figures and eda\_summary.json correlations}.
+
+% =====================================================================
+\section{Baseline and Preliminary Results}
+\subsection{Setup}
+ResNet-18~\cite{he2016resnet} with ImageNet weights and a single output logit, trained with binary cross-entropy,
+AdamW (lr $10^{-4}$), batch 32, 5 epochs; the epoch with the best validation accuracy is kept. Three seeds
+(0, 1, 2) fix all randomness (\texttt{utils/seed.py}); the commit hash is saved with the results.
+
+\subsection{Metrics with counts}
+\begin{table}[t]\centering\small
+\caption{Baseline on the test set (600 live, 600 spoof). Mean $\pm$ std over 3 seeds; counts for seed 0.}
+\label{tab:base}
+\begin{tabular}{lcc}\toprule
+ & Default ($p{=}0.5$) & Operating point \\\midrule
+Threshold & 0.500 & \pending{val EER thr.} \\
+APCER & \pending{\% (n/600)} & \pending{} \\
+BPCER & \pending{\% (n/600)} & \pending{} \\
+ACER & \pending{} & \pending{} \\
+EER (val / test) & \multicolumn{2}{c}{\pending{}} \\
+AUC (val / test) & \multicolumn{2}{c}{\pending{}} \\\bottomrule
+\end{tabular}
+\end{table}
+Table~\ref{tab:base}. For reference, the pilot run (seed 0, same data) gave APCER 22.5\% (135/600), BPCER 2.0\%
+(12/600) and ACER 12.2\%, with validation accuracy 99.1\% against test accuracy 87.8\%; two further pilot runs
+gave APCER 20.2\% and 19.8\%.
+
+\subsection{Threshold analysis}
+\begin{figure}[t]\centering
+\fig{far_frr.png}{0.49\linewidth}\hfill\fig{roc.png}{0.42\linewidth}
+\caption{Left: APCER (FAR) and BPCER (FRR) against the threshold on validation and test, with the chosen
+operating point. Right: ROC curves. \pending{one sentence on the val--test gap visible here}}
+\label{fig:thr}
+\end{figure}
+We choose the operating point on \emph{validation} (its EER threshold) and apply it unchanged to test, so the test
+set never tunes the model (Fig.~\ref{fig:thr}). \pending{state the threshold and the resulting APCER/BPCER, and
+why this point is preferred, e.g. for a kiosk where a false accept is costlier than a retry}.
+
+\subsection{Error analysis}
+\begin{table}[t]\centering\small
+\caption{Test spoofs accepted as live by spoof type (pilot, seed 0, $p{=}0.5$).}\label{tab:type}
+\begin{tabular}{lrr}\toprule
+Spoof type & Accepted / total & Rate \\\midrule
+PC screen & 128 / 243 & 52.7\% \\
+Poster & 3 / 16 & 18.8\% \\
+Photo & 3 / 76 & 3.9\% \\
+Phone screen & 1 / 202 & 0.5\% \\
+A4 print & 0 / 39 & 0.0\% \\
+Pad screen & 0 / 24 & 0.0\% \\\midrule
+All & 135 / 600 & 22.5\% \\\bottomrule
+\end{tabular}
+\end{table}
+Errors concentrate in one attack type (Table~\ref{tab:type}): PC-screen replays account for 128 of the 135
+false accepts, while every training fake, PC screens included, is rejected. Failures also cluster in normal
+lighting (29.5\% accepted) and indoor scenes (25.7\%), against 0--4\% under strong, back or dark light and 3.5\%
+outdoors. Inspecting the accepted PC-screen crops shows sharp, well-lit captures with no visible pixel grid or
+moir\'e, while correctly rejected ones show that texture. \textbf{Hypothesis:} the baseline relies on fine
+screen texture, which disappears in high-quality captures; the test split contains many more of these than
+training, which also explains the gap between validation (99\%) and test (88\%) accuracy.
+\pending{add the false-accept grid figure if space allows}
+
+\subsection{Preliminary robustness results}
+A 10-step PGD attack flips 100\% of the baseline's test fakes at every budget from $1/255$ to $16/255$.
+Adversarial training at $2/255$ lowers this: among fakes the hardened model rejects without attack, a $2/255$
+attack flips 29\% (11\% at $1/255$), reproduced across two training schemes, at the cost of a higher clean
+APCER (about 42\% vs 20\%), concentrated on screen replays. Training at $8/255$ with up-weighted fakes appeared
+to give 2\% attack success, but the budget sweep exposed it: smaller attacks still succeed 98\% of the time,
+which is impossible for a truly robust model and indicates gradient masking~\cite{athalye2018obfuscated}.
+
+\textbf{Reproducibility.} All numbers in this section come from \texttt{notebooks/kaggle\_checkpoint.ipynb}
+at commit \pending{hash}; the repository README maps each script to its section.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+\end{document}
