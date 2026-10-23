@@ -215,18 +215,39 @@ re-captures, and the same subjects recur.}
 \label{fig:fa}
 \end{figure}
 
-\subsection{Preliminary robustness results}
-A 10-step PGD attack flips 100\% of the baseline's test fakes at every budget from $1/255$ to $16/255$.
-Adversarial training at $2/255$ lowers this: among fakes the hardened model rejects without attack, a $2/255$
-attack flips 29\% (11\% at $1/255$), reproduced across two training schemes, at the cost of a higher clean
-APCER (about 42\% vs 22\%), concentrated on screen replays. Training at $8/255$ with up-weighted fakes appeared
-to give 2\% attack success, but the budget sweep exposed it: smaller attacks still succeed 98\% of the time,
-which is impossible for a truly robust model and indicates gradient masking~\cite{athalye2018obfuscated}.
+\subsection{Robustness: attack and first defense}
+\begin{table}[t]\centering\small
+\caption{Test-set attack success (PGD, 10 steps) on fakes each model rejects without attack, and clean rates.
+Mean $\pm$ std over 3 seeds; the defense fine-tunes each baseline seed with PGD adversarial training at $2/255$.}
+\label{tab:rob}
+\begin{tabular}{lcc}\toprule
+ & Baseline & Defense ($2/255$) \\\midrule
+Attack success, $\epsilon=1/255$ & 100\% & $13.4\pm2.1$\% \\
+\quad $2/255$ & 100\% & $32.0\pm3.4$\% \\
+\quad $4/255$ & 100\% & $64.6\pm1.9$\% \\
+\quad $8/255$ & 100\% & $96.0\pm0.9$\% \\
+\quad $16/255$ & 100\% & 100\% \\\midrule
+Clean APCER ($p{=}0.5$) & $28.8\pm8.7$\% & $45.0\pm0.8$\% \\
+Clean BPCER ($p{=}0.5$) & $1.3\pm0.9$\% & $6.4\pm1.5$\% \\
+APCER / BPCER (val op.\ point) & $31.3$ / $1.3$\% & $36.2$ / $10.9$\% \\
+Test AUC & $0.963\pm0.013$ & $0.852\pm0.016$ \\\bottomrule
+\end{tabular}
+\end{table}
+A PGD attack flips 100\% of every baseline seed's test fakes at every budget from $1/255$ to $16/255$
+(Table~\ref{tab:rob}). Adversarial fine-tuning at $2/255$ gives genuine small-budget robustness: of the fakes it
+rejects, a $1/255$ attack flips only 13\% and a $2/255$ attack 32\%, consistent across seeds. Attack success rises
+monotonically with the budget and random noise of the same size does not help the attacker (46.2\% accepted vs
+45.0\% clean), so the gain is not gradient masking~\cite{athalye2018obfuscated}; an earlier $8/255$ variant with
+up-weighted fakes failed exactly this check (2\% success at $8/255$ but 98\% at $1/255$). Above $4/255$ the defense
+gives no protection. The cost is clean accuracy, concentrated on screen replays: PC-screen acceptance rises from
+52\% to 91\% (seed 0), and test AUC falls from 0.96 to 0.85. The defense also makes validation more informative:
+its validation-chosen threshold lowers test ACER (25.7\% to 23.6\%), unlike the baseline's. Reducing this clean
+cost is the main goal of the final milestone.
 
 \textbf{Reproducibility.} Every number and figure in Secs.~II--IV-D comes from one run of
 \texttt{scripts/\allowbreak run\_checkpoint\_\allowbreak mac.sh} (equivalently \texttt{notebooks/\allowbreak kaggle\_\allowbreak checkpoint.ipynb}) at commit
-\texttt{b20209a}, on an Apple M-series GPU (PyTorch MPS); results on CUDA differ slightly. The robustness numbers
-in Sec.~IV-E are preliminary single-seed Kaggle runs. The README maps each script to its section.
+\texttt{b20209a}, on an Apple M-series GPU (PyTorch MPS); results on CUDA differ slightly. The defense in Sec.~IV-E comes from
+\texttt{scripts/\allowbreak run\_defense\_\allowbreak mac.sh} at commit \texttt{1ff357e}. The README maps each script to its section.
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}

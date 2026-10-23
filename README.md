@@ -47,6 +47,14 @@ then evaluates the budget sweep (1-16/255), conditional and worst-case attack su
 operating point, and per-type errors. Several hours on an M-series Mac; rerunning skips finished seeds.
 Output: `results_defense.zip`.
 
+
+### Final experiments on a Mac (after the defense run)
+
+`caffeinate -i bash scripts/run_final_mac.sh` trains two variants aimed at the defense's clean-accuracy cost
+(lighter adversarial weight; 1/255 budget) and an ablation without the regularizer, selects the best defense on
+validation only, trains it on 3 seeds, and writes the final comparison table and trade-off chart
+(`evaluation/final_table.py`). About 7-9 hours; rerunning skips finished work. Output: `results_final.zip`.
+
 ## What it does
 1. Trains a ResNet-18 live-vs-spoof detector on face crops from CelebA-Spoof (baseline).
 2. Attacks it with a digital PGD attack (budget 8/255 pixel levels, 10 steps).
