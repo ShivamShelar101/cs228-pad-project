@@ -21,3 +21,4 @@ data_trcheck/
 .venv/
 celeba_meta/
 mac_data.zip
+results_*.zip

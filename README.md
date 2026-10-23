@@ -55,6 +55,18 @@ Output: `results_defense.zip`.
 validation only, trains it on 3 seeds, and writes the final comparison table and trade-off chart
 (`evaluation/final_table.py`). About 7-9 hours; rerunning skips finished work. Output: `results_final.zip`.
 
+
+### Extra experiments (after the final run)
+
+* **Stronger attack check:** `caffeinate -i bash scripts/run_strong_eval_mac.sh` attacks the caught test fakes of the
+  selected defense with PGD-50 x 2 restarts x 2 losses (cross-entropy and raw logit) at 1, 2, 4/255 and compares with
+  PGD-10 (`evaluation/strong_attack.py`). Output: `results_strong.zip`.
+* **Data v3 (distribution-shift fix):** run `notebooks/kaggle_data3.ipynb` as a Kaggle CPU commit. It builds
+  `data_pad3` (9,000 crops per class for train+val, PC-screen spoofs drawn 3x as readily via
+  `prepare_celeba_spoof.py --type_boost 7=3`, test split copied unchanged from `data_pad2`) and outputs `mac_data3.zip`.
+  Then `caffeinate -i bash scripts/run_data3_mac.sh ~/Downloads/mac_data3.zip` retrains the baselines and the defense on
+  it. Output: `results_data3.zip`.
+
 ## What it does
 1. Trains a ResNet-18 live-vs-spoof detector on face crops from CelebA-Spoof (baseline).
 2. Attacks it with a digital PGD attack (budget 8/255 pixel levels, 10 steps).

@@ -64,6 +64,9 @@ def crop_face(img, bb_path, bbox_inc=1.5, allow_padding=False):
     return img.convert("RGB").crop(box).resize((SIZE, SIZE)), None
 
 
+SPOOF_TYPE = {}  # spoof image key -> CelebA-Spoof spoof-type id (filled by scan_split)
+
+
 def scan_split(root, split, label_json, spoof_types, need, rng, max_per_subject=0):
     """Walk subject folders (shuffled) and collect images that exist, until each class has `need`."""
     data_dir = root / "Data" / split
@@ -98,6 +101,7 @@ def scan_split(root, split, label_json, spoof_types, need, rng, max_per_subject=
                     lab = labels.get(key)
                     if lab is None or int(lab[40]) not in spoof_types:
                         continue
+                    SPOOF_TYPE[key] = int(lab[40])
                 found[s][cls].append(key)
                 counts[cls] += 1
                 kept += 1
@@ -109,12 +113,17 @@ def scan_split(root, split, label_json, spoof_types, need, rng, max_per_subject=
     return found
 
 
-def pools_for(found, subjects, rng):
-    """Shuffled list of candidate image keys per class."""
+def pools_for(found, subjects, rng, type_boost=None):
+    """Shuffled list of candidate image keys per class. With type_boost {type_id: w}, spoofs of a boosted type
+    are drawn w times as readily (weighted random order, Efraimidis-Spirakis keys), so they make up a larger
+    share of the crops that get written. Used for train/val only; the test split is never re-weighted."""
     pools = {}
     for cls in ("live", "spoof"):
         pool = [k for s in subjects for k in found[s][cls]]
         rng.shuffle(pool)
+        if cls == "spoof" and type_boost:
+            keyed = [(rng.random() ** (1.0 / type_boost.get(SPOOF_TYPE.get(k), 1.0)), k) for k in pool]
+            pool = [k for _, k in sorted(keyed, reverse=True)]
         pools[cls] = pool
     return pools
 
@@ -170,8 +179,11 @@ def main():
                     help="max images per person per class (0 = no cap). A cap of ~8 spreads the same number of "
                          "images over many more people, which should help the model generalize to the test set")
     ap.add_argument("--allow_padding", action="store_true", help="keep crops that run off the photo (black bars)")
+    ap.add_argument("--type_boost", nargs="*", default=[],
+                    help="TYPE=WEIGHT pairs, e.g. 7=3 draws PC-screen spoofs (type 7) 3x as readily in train/val")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+    type_boost = {int(a.split("=")[0]): float(a.split("=")[1]) for a in args.type_boost}
 
     rng = random.Random(args.seed)
     root = Path(args.root) if args.root else find_root(args.src)
@@ -191,8 +203,8 @@ def main():
     n_train = int(args.per_class * (1 - args.val_frac))
     n_val_imgs = args.per_class - n_train
 
-    write(root, pools_for(train_found, train_subjects, rng), args.dst, "train", n_train, args.allow_padding)
-    write(root, pools_for(train_found, val_subjects, rng), args.dst, "val", n_val_imgs, args.allow_padding)
+    write(root, pools_for(train_found, train_subjects, rng, type_boost), args.dst, "train", n_train, args.allow_padding)
+    write(root, pools_for(train_found, val_subjects, rng, type_boost), args.dst, "val", n_val_imgs, args.allow_padding)
     if test_found:
         write(root, pools_for(test_found, sorted(test_found), rng), args.dst, "test", args.test_per_class,
               args.allow_padding)
