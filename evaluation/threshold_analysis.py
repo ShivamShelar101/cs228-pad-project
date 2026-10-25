@@ -29,6 +29,9 @@ from utils.device import get_device
 from utils.seed import set_seed
 
 
+LABEL = "Baseline"  # model name used in figure titles and the table heading (--label)
+
+
 def scores(model, root, split, device):
     """Probability of 'live' for every image, the true labels (1 = live) and the file paths."""
     ds = datasets.ImageFolder(f"{root}/{split}", transform=get_transforms(False))
@@ -89,7 +92,7 @@ def figures(pv, yv, pt, yt, op_thr, paths_t, out):
     ax.axvline(0.5, ls="--", c="k", lw=1, label="default threshold 0.5")
     ax.axvline(op_thr, ls=":", c="#264653", lw=1.5, label=f"chosen on val ({op_thr:.3f})")
     ax.set_yscale("log")
-    ax.set_title("Baseline score distribution on the test set")
+    ax.set_title(f"{LABEL} score distribution on the test set")
     ax.set_xlabel("predicted probability of 'live'")
     ax.set_ylabel("number of images (log scale)")
     ax.legend(fontsize=7)
@@ -104,7 +107,7 @@ def figures(pv, yv, pt, yt, op_thr, paths_t, out):
         ax.plot(thrs, a, ls, c="#e76f51", label=f"APCER / FAR ({tag})")
         ax.plot(thrs, b, ls, c="#2a9d8f", label=f"BPCER / FRR ({tag})")
     ax.axvline(op_thr, ls=":", c="#264653", lw=1.5, label="operating point (val EER)")
-    ax.set_title("Baseline error rates against the decision threshold")
+    ax.set_title(f"{LABEL} error rates against the decision threshold")
     ax.set_xlabel("threshold on P(live)")
     ax.set_ylabel("error rate (%)")
     ax.legend(fontsize=7)
@@ -117,7 +120,7 @@ def figures(pv, yv, pt, yt, op_thr, paths_t, out):
         tpr = [1 - rates(p, y, t)["BPCER"] for t in thrs]
         ax.plot(apc, tpr, ls, label=f"{tag} (AUC {auc(p, y):.3f})")
     ax.plot([0, 1], [0, 1], c="0.7", lw=0.8)
-    ax.set_title("Baseline ROC")
+    ax.set_title(f"{LABEL} ROC")
     ax.set_xlabel("APCER (fakes accepted)")
     ax.set_ylabel("1 - BPCER (real faces accepted)")
     ax.legend(fontsize=8)
@@ -147,7 +150,10 @@ def main():
     ap.add_argument("--ckpt_glob", default="checkpoints/baseline/seed*_best.pt")
     ap.add_argument("--arch", default="resnet18")
     ap.add_argument("--out", default="results/threshold")
+    ap.add_argument("--label", default="Baseline", help="model name for titles, e.g. \"Defended model\"")
     args = ap.parse_args()
+    global LABEL
+    LABEL = args.label
     set_seed(0)
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     device = get_device()
@@ -186,7 +192,7 @@ def main():
     def f(k, pct=True):
         m, s = summary[k]
         return f"{m*100:.1f}% ± {s*100:.1f}" if pct else f"{m:.3f} ± {s:.3f}"
-    lines = [f"**Baseline over {len(per_seed)} seed(s)** (mean ± std)", "",
+    lines = [f"**{LABEL} over {len(per_seed)} seed(s)** (mean ± std)", "",
              "| Metric | Default threshold (0.5) | Operating point (val EER threshold) |", "|---|---|---|",
              f"| Threshold | 0.500 | {f('operating_point_threshold', False)} |",
              f"| APCER (fakes accepted) | {f('default_APCER')} | {f('operating_point_APCER')} |",

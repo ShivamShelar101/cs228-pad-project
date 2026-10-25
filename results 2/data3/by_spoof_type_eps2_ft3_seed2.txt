@@ -1,0 +1,54 @@
+
+===== TEST fakes: share eps2_ft3 accepts as live =====
+
+spoof type
+  group               images    accepted as live
+  PC screen              243               83.5%
+  phone screen           202               15.8%
+  photo                   76                2.6%
+  A4 print                39                2.6%
+  pad screen              24                8.3%
+  poster                  16               25.0%
+
+lighting
+  group               images    accepted as live
+  normal                 447               52.1%
+  strong                  69               10.1%
+  dark                    48                2.1%
+  back                    36                8.3%
+
+environment
+  group               images    accepted as live
+  indoor                 514               46.7%
+  outdoor                 86                4.7%
+
+all fakes
+  group               images    accepted as live
+  all                    600               40.7%
+
+===== TRAIN fakes: share eps2_ft3 accepts as live =====
+
+spoof type
+  group               images    accepted as live
+  phone screen          2066                1.2%
+  PC screen             1769                1.6%
+  pad screen            1191                6.3%
+  photo                  970                6.1%
+  A4 print               940                3.7%
+  poster                 714                7.4%
+
+lighting
+  group               images    accepted as live
+  normal                4476                3.2%
+  strong                1508                5.0%
+  dark                   849                3.9%
+  back                   817                3.1%
+
+environment
+  group               images    accepted as live
+  indoor                6047                3.9%
+  outdoor               1603                2.4%
+
+all fakes
+  group               images    accepted as live
+  all                   7650                3.6%

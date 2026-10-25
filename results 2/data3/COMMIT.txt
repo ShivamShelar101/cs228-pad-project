@@ -1,0 +1,3 @@
+608440438fe7d61c86d69614db98deb36e415696
+device: mps
+baseline seeds: 0 1 2; defense seeds: 0 1 2

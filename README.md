@@ -67,6 +67,12 @@ validation only, trains it on 3 seeds, and writes the final comparison table and
   Then `caffeinate -i bash scripts/run_data3_mac.sh ~/Downloads/mac_data3.zip` retrains the baselines and the defense on
   it. Output: `results_data3.zip`.
 
+* **Improvement experiments:** `caffeinate -i bash scripts/run_improve_mac.sh` (after the data v3 run) tries weight
+  interpolation between each baseline and its defended model (`training/interpolate.py`, no training) and the TRADES
+  loss (`train_hardened.py --trades_beta`), selects on validation, and writes `results/improve/`.
+* **Data v4:** `notebooks/kaggle_data4.ipynb` (Kaggle CPU) boosts PC-screen spoofs further
+  (`--type_boost 7=8 --oversample 8`); then `scripts/run_data4_mac.sh ~/Downloads/mac_data4.zip`.
+
 ## What it does
 1. Trains a ResNet-18 live-vs-spoof detector on face crops from CelebA-Spoof (baseline).
 2. Attacks it with a digital PGD attack (budget 8/255 pixel levels, 10 steps).

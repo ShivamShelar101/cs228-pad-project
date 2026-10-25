@@ -1,0 +1,54 @@
+
+===== TEST fakes: share baseline3 accepts as live =====
+
+spoof type
+  group               images    accepted as live
+  PC screen              243               63.0%
+  phone screen           202                1.5%
+  photo                   76                2.6%
+  A4 print                39                0.0%
+  pad screen              24                0.0%
+  poster                  16               12.5%
+
+lighting
+  group               images    accepted as live
+  normal                 447               35.1%
+  strong                  69                2.9%
+  dark                    48                0.0%
+  back                    36                2.8%
+
+environment
+  group               images    accepted as live
+  indoor                 514               30.7%
+  outdoor                 86                2.3%
+
+all fakes
+  group               images    accepted as live
+  all                    600               26.7%
+
+===== TRAIN fakes: share baseline3 accepts as live =====
+
+spoof type
+  group               images    accepted as live
+  phone screen          2066                0.4%
+  PC screen             1769                0.3%
+  pad screen            1191                1.8%
+  photo                  970                1.2%
+  A4 print               940                0.1%
+  poster                 714                0.6%
+
+lighting
+  group               images    accepted as live
+  normal                4476                0.5%
+  strong                1508                1.2%
+  dark                   849                0.5%
+  back                   817                0.9%
+
+environment
+  group               images    accepted as live
+  indoor                6047                0.8%
+  outdoor               1603                0.2%
+
+all fakes
+  group               images    accepted as live
+  all                   7650                0.7%

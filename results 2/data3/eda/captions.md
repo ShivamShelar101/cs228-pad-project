@@ -1,0 +1,8 @@
+- **class_balance.png**: Classes were balanced by construction (equal live and spoof crops per split), so plain accuracy is meaningful, but we still report APCER and BPCER separately.
+- **spoof_types.png**: The test split contains a much larger share of PC-screen replays than train, a distribution shift that later explains most baseline errors.
+- **univariate.png**: Live and spoof crops overlap heavily on every simple statistic, so no single hand-made feature separates them and a learned model is needed.
+- **by_type.png**: PC-screen replays have sharpness and high-frequency energy close to live faces, which matches the baseline's main failure mode.
+- **correlation.png**: Correlations with the label are weak, confirming that the classes are not separable by global image statistics.
+- **scatter.png**: The two texture statistics overlap strongly between classes, with spoofs spread wider.
+- **per_subject.png**: No subject contributes more than 8 crops per class, so the model cannot lean on a few heavily repeated identities.
+- **conditions.png**: Capture conditions of the spoof crops are similar in train and test, mostly indoor and normal light.

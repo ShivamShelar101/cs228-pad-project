@@ -46,7 +46,7 @@ python -m evaluation.evaluate --data_root ./data_pad3 --sweep 1 2 4 8 16 \
     --baseline_glob "checkpoints/baseline3/seed${DG}_best.pt" --hardened_glob "checkpoints/eps2_ft3/seed${DG}_best.pt" \
     --out "$OUT/test_eps2_ft3.json"
 python -m evaluation.make_report --run "Data v3: adv. fine-tuning 2/255=$OUT/test_eps2_ft3.json" --out "$OUT/report"
-python -m evaluation.threshold_analysis --data_root ./data_pad3 --ckpt_glob "checkpoints/eps2_ft3/seed${DG}_best.pt" --out "$OUT/threshold_eps2_ft3"
+python -m evaluation.threshold_analysis --data_root ./data_pad3 --ckpt_glob "checkpoints/eps2_ft3/seed${DG}_best.pt" --label "Defended model" --out "$OUT/threshold_eps2_ft3"
 for v in baseline3 eps2_ft3; do for s in $DEF_SEEDS; do
   python -m evaluation.by_spoof_type --src ./celeba_meta --data_root ./data_pad3 --ckpt "checkpoints/$v/seed${s}_best.pt" > "$OUT/by_spoof_type_${v}_seed${s}.txt"
 done; done

@@ -1,0 +1,84 @@
+{
+  "n_crops": {
+    "train/live": 7650,
+    "train/spoof": 7650,
+    "val/live": 1350,
+    "val/spoof": 1350,
+    "test/live": 600,
+    "test/spoof": 600
+  },
+  "n_subjects": {
+    "train": 4636,
+    "val": 818,
+    "test": 384
+  },
+  "subject_overlap": {
+    "train&val": 0,
+    "train&test": 1,
+    "val&test": 0
+  },
+  "images_per_subject_per_class": {
+    "mean": 2.3976023976023977,
+    "max": 8
+  },
+  "near_duplicate_groups": 39,
+  "near_duplicates_across_splits": 5,
+  "near_duplicates_with_conflicting_labels": 0,
+  "missing_metadata": 0,
+  "original_resolution": {
+    "n": 0,
+    "width_median": null,
+    "height_median": null,
+    "width_min": null,
+    "width_max": null
+  },
+  "spoof_types": {
+    "train": {
+      "photo": 970,
+      "poster": 714,
+      "PC screen": 1769,
+      "A4 print": 940,
+      "pad screen": 1191,
+      "phone screen": 2066
+    },
+    "val": {
+      "poster": 131,
+      "photo": 232,
+      "A4 print": 173,
+      "PC screen": 297,
+      "pad screen": 201,
+      "phone screen": 316
+    },
+    "test": {
+      "PC screen": 243,
+      "photo": 76,
+      "poster": 16,
+      "A4 print": 39,
+      "pad screen": 24,
+      "phone screen": 202
+    }
+  },
+  "feature_means": {
+    "live": {
+      "brightness": 111.94647200644016,
+      "contrast": 62.04845994015535,
+      "saturation": 95.00153761724631,
+      "sharpness": 2.5176663531859718,
+      "hf_energy": 0.035445922624567174
+    },
+    "spoof": {
+      "brightness": 112.21985519856214,
+      "contrast": 55.85275873432557,
+      "saturation": 69.5237073472639,
+      "sharpness": 2.1453113727271558,
+      "hf_energy": 0.02761437514454883
+    }
+  },
+  "correlation_with_label": {
+    "brightness": -0.0042232275824791304,
+    "contrast": 0.21859140513984968,
+    "saturation": 0.39477507197770473,
+    "sharpness": 0.39901615924642836,
+    "hf_energy": 0.20158327646550836
+  }
+}

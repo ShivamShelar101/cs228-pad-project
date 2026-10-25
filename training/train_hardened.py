@@ -29,6 +29,38 @@ from training.train_baseline import evaluate_acc
 from data.dataset import IMAGENET_MEAN, IMAGENET_STD
 
 
+def bernoulli_kl(logit_p, logit_q):
+    """KL(Bern(sigmoid(logit_p)) || Bern(sigmoid(logit_q))), per image, numerically stable."""
+    import torch.nn.functional as F
+    p = torch.sigmoid(logit_p)
+    return p * (F.logsigmoid(logit_p) - F.logsigmoid(logit_q)) + \
+        (1 - p) * (F.logsigmoid(-logit_p) - F.logsigmoid(-logit_q))
+
+
+def trades_adversary(model, x, eps, steps):
+    """TRADES inner maximization (Zhang et al., ICML 2019): find x' in the eps-ball that maximizes
+    KL(f(x) || f(x')), i.e. the point where the prediction CHANGES most, whatever the label."""
+    was_training = model.training
+    model.eval()
+    dev = x.device
+    mean = torch.tensor(IMAGENET_MEAN, device=dev).view(1, 3, 1, 1)
+    std = torch.tensor(IMAGENET_STD, device=dev).view(1, 3, 1, 1)
+    lo, hi = (0 - mean) / std, (1 - mean) / std
+    eps_t, alpha_t = eps / std, max(eps / 4, 0.5 / 255) / std
+    with torch.no_grad():
+        clean_logit = model(x)
+    adv = (x + 0.001 * torch.randn_like(x)).detach()
+    for _ in range(steps):
+        adv.requires_grad_(True)
+        kl = bernoulli_kl(clean_logit, model(adv)).sum()
+        g = torch.autograd.grad(kl, adv)[0]
+        adv = adv.detach() + alpha_t * g.sign()
+        adv = torch.max(torch.min(adv, x + eps_t), x - eps_t)
+        adv = torch.max(torch.min(adv, hi), lo).detach()
+    model.train(was_training)
+    return adv
+
+
 def robust_val_acc(model, val_loader, device, live_idx, eps, max_batches=8):
     """Accuracy on validation images attacked in the harmful direction (fakes toward live, real toward spoof).
     Returns (overall, attacked-fake accuracy, attacked-real accuracy)."""
@@ -80,6 +112,9 @@ def main():
     ap.add_argument("--attack_steps", type=int, default=10, help="PGD steps used during training")
     ap.add_argument("--split_bn", action="store_true",
                     help="forward clean / attacked / noisy images in separate passes (separate batch-norm statistics)")
+    ap.add_argument("--trades_beta", type=float, default=0.0,
+                    help="> 0 switches to the TRADES loss: BCE(clean) + beta * KL(f(x) || f(x_adv)). Lower beta "
+                         "favours clean accuracy, higher favours robustness. Replaces the adv/noise/reg terms")
     ap.add_argument("--init", default=None,
                     help="start from this checkpoint (e.g. the trained baseline) instead of ImageNet weights")
     ap.add_argument("--no_pretrained", action="store_true", help="skip ImageNet weights (smoke tests)")
@@ -90,7 +125,8 @@ def main():
     fake_w = args.adv_weight if args.fake_adv_weight is None else args.fake_adv_weight
     real_w = args.adv_weight if args.real_adv_weight is None else args.real_adv_weight
     print(f"hardened training: lr={args.lr} eps={args.eps:.4f} fake_adv_weight={fake_w} real_adv_weight={real_w} "
-          f"noise_weight={args.noise_weight} reg_weight={args.reg_weight} split_bn={args.split_bn}")
+          f"noise_weight={args.noise_weight} reg_weight={args.reg_weight} split_bn={args.split_bn} "
+          f"trades_beta={args.trades_beta}")
     device = get_device()
     os.makedirs(args.out, exist_ok=True)
 
@@ -114,6 +150,15 @@ def main():
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
             live_labels = (labels == live_idx).float()
+            if args.trades_beta > 0:
+                adv = trades_adversary(model, imgs, args.eps, args.attack_steps)
+                opt.zero_grad()
+                clean_logit, adv_logit = model(imgs), model(adv)
+                loss = criterion(clean_logit, live_labels).mean() + \
+                    args.trades_beta * bernoulli_kl(clean_logit, adv_logit).mean()
+                loss.backward()
+                opt.step()
+                continue
 
             # Each group = (images, true live-labels, per-image loss weights). Every group mixes BOTH classes:
             # a batch-norm pass over a single-class batch normalizes away the live/spoof difference itself.
@@ -163,12 +208,12 @@ def main():
             opt.step()
 
         val_acc = evaluate_acc(model, val_loader, device, live_idx)
-        if args.adv_weight > 0:
+        if args.adv_weight > 0 or args.trades_beta > 0:
             rob, rob_fake, rob_real = robust_val_acc(model, val_loader, device, live_idx, args.eps)
         else:
             rob = rob_fake = rob_real = float("nan")
         # Keep the epoch that is good on BOTH clean and attacked validation images (weaker of the two).
-        score = min(val_acc, rob) if args.adv_weight > 0 else val_acc
+        score = min(val_acc, rob) if (args.adv_weight > 0 or args.trades_beta > 0) else val_acc
         print(f"epoch {epoch} done: clean val_acc={val_acc:.4f}  attacked val_acc={rob:.4f} "
               f"(fakes {rob_fake:.4f}, real {rob_real:.4f})  score={score:.4f}", flush=True)
         torch.save(model.state_dict(), f"{args.out}/seed{args.seed}_epoch{epoch}.pt")

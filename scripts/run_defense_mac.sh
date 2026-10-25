@@ -37,7 +37,7 @@ python -m evaluation.make_report --run "Adversarial fine-tuning at 2/255=results
 
 log "Threshold analysis of the defended models (operating point chosen on validation)"
 python -m evaluation.threshold_analysis --data_root ./data_pad2 \
-    --ckpt_glob "checkpoints/eps2_ft/seed[$(echo $SEEDS | tr -d ' ')]_best.pt" --out results/defense/threshold
+    --ckpt_glob "checkpoints/eps2_ft/seed[$(echo $SEEDS | tr -d ' ')]_best.pt" --label "Defended model" --out results/defense/threshold
 
 log "Error analysis by spoof type, defended model"
 FIRST=$(echo $SEEDS | awk '{print $1}')

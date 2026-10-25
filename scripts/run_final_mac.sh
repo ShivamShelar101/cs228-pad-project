@@ -81,7 +81,7 @@ python -m evaluation.final_table \
   --out "$OUT/final"
 
 log "Threshold analysis and per-type errors for the selected defense ($WIN), all seeds"
-python -m evaluation.threshold_analysis --data_root ./data_pad2 --ckpt_glob "checkpoints/$WIN/seed[012]_best.pt" --out "$OUT/threshold_$WIN"
+python -m evaluation.threshold_analysis --data_root ./data_pad2 --ckpt_glob "checkpoints/$WIN/seed[012]_best.pt" --label "Defended model" --out "$OUT/threshold_$WIN"
 for v in eps2_ft "$WIN"; do for s in 0 1 2; do
   f="$OUT/by_spoof_type_${v}_seed${s}.txt"; [ -f "$f" ] && continue
   python -m evaluation.by_spoof_type --src ./celeba_meta --data_root ./data_pad2 --ckpt "checkpoints/$v/seed${s}_best.pt" > "$f"

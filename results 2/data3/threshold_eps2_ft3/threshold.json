@@ -1,0 +1,123 @@
+{
+  "per_seed": [
+    {
+      "checkpoint": "checkpoints/eps2_ft3/seed0_best.pt",
+      "default": {
+        "APCER": 0.41833333333333333,
+        "BPCER": 0.035,
+        "ACER": 0.22666666666666668,
+        "APCER_count": "251/600",
+        "BPCER_count": "21/600",
+        "threshold": 0.5
+      },
+      "operating_point": {
+        "APCER": 0.30833333333333335,
+        "BPCER": 0.095,
+        "ACER": 0.20166666666666666,
+        "APCER_count": "185/600",
+        "BPCER_count": "57/600",
+        "threshold": 0.7692269682884216
+      },
+      "val_EER": 0.05037037037037037,
+      "test_EER": 0.19166666666666668,
+      "val_AUC": 0.9905042524005487,
+      "test_AUC": 0.9004527777777778
+    },
+    {
+      "checkpoint": "checkpoints/eps2_ft3/seed1_best.pt",
+      "default": {
+        "APCER": 0.375,
+        "BPCER": 0.06333333333333334,
+        "ACER": 0.21916666666666668,
+        "APCER_count": "225/600",
+        "BPCER_count": "38/600",
+        "threshold": 0.5
+      },
+      "operating_point": {
+        "APCER": 0.315,
+        "BPCER": 0.09666666666666666,
+        "ACER": 0.20583333333333334,
+        "APCER_count": "189/600",
+        "BPCER_count": "58/600",
+        "threshold": 0.6491499990224838
+      },
+      "val_EER": 0.05555555555555555,
+      "test_EER": 0.20166666666666666,
+      "val_AUC": 0.9896307270233197,
+      "test_AUC": 0.8958
+    },
+    {
+      "checkpoint": "checkpoints/eps2_ft3/seed2_best.pt",
+      "default": {
+        "APCER": 0.4066666666666667,
+        "BPCER": 0.045,
+        "ACER": 0.22583333333333333,
+        "APCER_count": "244/600",
+        "BPCER_count": "27/600",
+        "threshold": 0.5
+      },
+      "operating_point": {
+        "APCER": 0.32166666666666666,
+        "BPCER": 0.09333333333333334,
+        "ACER": 0.2075,
+        "APCER_count": "193/600",
+        "BPCER_count": "56/600",
+        "threshold": 0.7498652786016464
+      },
+      "val_EER": 0.05037037037037037,
+      "test_EER": 0.185,
+      "val_AUC": 0.9904367626886146,
+      "test_AUC": 0.9020611111111111
+    }
+  ],
+  "summary": {
+    "val_EER": [
+      0.052098765432098765,
+      0.002993668062464724
+    ],
+    "test_EER": [
+      0.19277777777777777,
+      0.008388704928078607
+    ],
+    "val_AUC": [
+      0.990190580704161,
+      0.00048602039388067394
+    ],
+    "test_AUC": [
+      0.899437962962963,
+      0.0032515788346117744
+    ],
+    "default_APCER": [
+      0.4,
+      0.022422706745122853
+    ],
+    "default_BPCER": [
+      0.04777777777777778,
+      0.014369463507086183
+    ],
+    "default_ACER": [
+      0.2238888888888889,
+      0.004110735718596872
+    ],
+    "default_threshold": [
+      0.5,
+      0.0
+    ],
+    "operating_point_APCER": [
+      0.315,
+      0.006666666666666654
+    ],
+    "operating_point_BPCER": [
+      0.095,
+      0.0016666666666666635
+    ],
+    "operating_point_ACER": [
+      0.205,
+      0.003004626062886658
+    ],
+    "operating_point_threshold": [
+      0.722747415304184,
+      0.06446823651526494
+    ]
+  }
+}
