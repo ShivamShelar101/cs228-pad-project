@@ -83,7 +83,13 @@ if [ -f "checkpoints/$WIN/seed1_best.pt" ] && [ -f "checkpoints/$WIN/seed2_best.
 fi
 log "Bundle"
 { git rev-parse HEAD 2>/dev/null || echo "not a git checkout"; echo "device: $(python -c 'from utils.device import get_device; print(get_device())')"; echo "selected: $WIN"; } | tee "$OUT/COMMIT.txt"
-for f in "$OUT"/*.md "$OUT"/*.txt "$OUT"/threshold_*/threshold.md; do [ -f "$f" ] && { echo "===== $f"; cat "$f"; echo; }; done > "$OUT/all_results.txt"
+# Collect into a temp file first: writing straight into $OUT would make the *.txt glob include the output
+# file itself, and cat would copy it into itself until the disk is full.
+TMP=$(mktemp)
+for f in "$OUT"/*.md "$OUT"/*.txt "$OUT"/threshold_*/threshold.md; do
+  [ -f "$f" ] && [ "$(basename "$f")" != all_results.txt ] && { echo "===== $f"; cat "$f"; echo; }
+done > "$TMP"
+mv "$TMP" "$OUT/all_results.txt"
 rm -f results_improve.zip && zip -qr results_improve.zip "$OUT" && ls -lh results_improve.zip
 cat "$OUT/improve.md"
 log "Done. Upload results/improve/all_results.txt and results/improve/improve_tradeoff.png to Claude."

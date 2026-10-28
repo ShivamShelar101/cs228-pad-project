@@ -15,7 +15,10 @@ function ResultCard({ title, r }) {
       <div style={{ fontSize: 28, fontWeight: 700, color: good ? colors.live : colors.spoof }}>
         {good ? "LIVE" : "SPOOF"}
       </div>
-      <div style={{ color: colors.text, marginTop: 4 }}>confidence {(r.confidence * 100).toFixed(1)}%</div>
+      <div style={{ color: colors.text, marginTop: 4 }}>P(live) {(r.prob_live * 100).toFixed(1)}%</div>
+      {r.threshold !== undefined && (
+        <div style={{ color: colors.dim, fontSize: 13, marginTop: 2 }}>threshold {(r.threshold * 100).toFixed(0)}% (chosen on validation)</div>
+      )}
     </div>
   );
 }
@@ -53,13 +56,12 @@ export default function App() {
     return () => stream && stream.getTracks().forEach((t) => t.stop());
   }, []);
 
-  // Crop a square around the detected face (with margin) and return a 224x224 PNG data URL.
-  function cropFace() {
-    const video = videoRef.current;
-    const res = landmarkerRef.current.detectForVideo(video, performance.now());
+  // Crop a square around the detected face (with the same 1.5x margin as the training crops)
+  // and return a 224x224 PNG data URL. Works on the webcam <video> or an uploaded <img>.
+  function cropFrom(source, W, H) {
+    const res = landmarkerRef.current.detectForVideo(source, performance.now());
     const lm = res.faceLandmarks && res.faceLandmarks[0];
     if (!lm) return null;
-    const W = video.videoWidth, H = video.videoHeight;
     const xs = lm.map((p) => p.x * W), ys = lm.map((p) => p.y * H);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -70,8 +72,13 @@ export default function App() {
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, 224, 224);
-    ctx.drawImage(video, cx - side / 2, cy - side / 2, side, side, 0, 0, 224, 224);
+    ctx.drawImage(source, cx - side / 2, cy - side / 2, side, side, 0, 0, 224, 224);
     return canvas.toDataURL("image/png");
+  }
+
+  function cropFace() {
+    const video = videoRef.current;
+    return cropFrom(video, video.videoWidth, video.videoHeight);
   }
 
   async function send(dataUrl) {
@@ -99,11 +106,23 @@ export default function App() {
     send(url);
   }
 
+  // Uploaded files: a 224x224 image is already a face crop (e.g. the demo_images pairs) and is sent
+  // untouched, so the attack's pixel pattern survives. Anything else gets the same face crop as the webcam.
   function onUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => send(reader.result);
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        if (img.naturalWidth === 224 && img.naturalHeight === 224) return send(reader.result);
+        if (!landmarkerRef.current) return setStatus("Face detector still loading, try again.");
+        const url = cropFrom(img, img.naturalWidth, img.naturalHeight);
+        if (!url) return setStatus("No face found in that image.");
+        send(url);
+      };
+      img.src = reader.result;
+    };
     reader.readAsDataURL(file);
   }
 

@@ -42,6 +42,13 @@ for name, candidates in MODEL_FILES.items():
 if not sessions:
     raise RuntimeError("No ONNX model found. Put model_hardened.onnx (and model_baseline.onnx) in app/backend/")
 
+# Decision thresholds on P(live), chosen on VALIDATION (the operating points in the report).
+# thresholds.json next to this file: {"baseline": 0.35, "hardened": 0.75}; missing -> 0.5.
+THRESHOLDS = {"baseline": 0.5, "hardened": 0.5}
+if (HERE / "thresholds.json").exists():
+    import json
+    THRESHOLDS.update(json.loads((HERE / "thresholds.json").read_text()))
+
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
@@ -58,24 +65,25 @@ def preprocess(image_b64: str) -> np.ndarray:
     return arr.transpose(2, 0, 1)[None, ...].astype(np.float32)
 
 
-def score(session, x):
+def score(session, x, threshold=0.5):
     logit = float(session.run(["logit"], {"input": x})[0].reshape(-1)[0])
     prob_live = 1.0 / (1.0 + np.exp(-logit))
     return {
-        "is_live": bool(prob_live > 0.5),
-        "confidence": float(prob_live if prob_live > 0.5 else 1 - prob_live),
+        "is_live": bool(prob_live > threshold),
+        "confidence": float(prob_live if prob_live > threshold else 1 - prob_live),
         "prob_live": float(prob_live),
+        "threshold": float(threshold),
     }
 
 
 @app.post("/verify")
 def verify(req: VerifyRequest):
     x = preprocess(req.image_b64)
-    results = {name: score(sess, x) for name, sess in sessions.items()}
+    results = {name: score(sess, x, THRESHOLDS.get(name, 0.5)) for name, sess in sessions.items()}
     primary = results.get("hardened") or next(iter(results.values()))
     return {**primary, "models": results}
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "models": list(sessions)}
+    return {"status": "ok", "models": list(sessions), "thresholds": THRESHOLDS}

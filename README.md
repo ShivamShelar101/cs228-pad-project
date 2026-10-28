@@ -99,3 +99,16 @@ validation only, trains it on 3 seeds, and writes the final comparison table and
 - The regularizer is a single-dataset simplification of the CVPR 2023 method, not a reproduction.
 - The attack is digital only, so results speak to digital robustness.
 - The dataset is used under CelebA-Spoof's non-commercial research license: do not redistribute it.
+
+## Kiosk Guard demo (final models)
+
+```bash
+bash scripts/prepare_demo_mac.sh          # exports the data v3 seed-2 models to ONNX, writes thresholds.json
+                                          # (validation operating points) and demo_images/ (clean + attacked pairs)
+cd app/backend && uvicorn main:app --port 8000        # terminal 1
+cd app/frontend && npm install && npm run dev         # terminal 2, then open the printed address
+```
+Three things to show: (1) a live face at the webcam; (2) a face on a phone screen held to the camera; (3) upload
+`demo_images/clean_00.png`, then `demo_images/attacked_00.png`: the attack (2/255) flips the baseline to LIVE
+while the hardened model should stay SPOOF; `demo_images/summary.json` records how many pairs the hardened model holds.
+`demo_images/` contains dataset crops and is git-ignored.

@@ -26,7 +26,7 @@ for s in $SEEDS; do
   if [ -f "checkpoints/baseline4/.seed${s}_done" ]; then echo "baseline4 seed $s done, skipping"; continue; fi
   log "Baseline on data v4, seed $s"
   python -m training.train_baseline --data_root ./data_pad4 --epochs 5 --seed "$s" --out checkpoints/baseline4 $EXTRA
-  touch "checkpoints/baseline4/.seed${s}_done"
+  rm -f checkpoints/*/seed*_epoch*.pt; touch "checkpoints/baseline4/.seed${s}_done"
 done
 SG="[$(echo $SEEDS | tr -d ' ')]"
 log "Threshold analysis, data v4 baselines"
@@ -37,7 +37,7 @@ for s in $DEF_SEEDS; do
   log "Defense on data v4 (adv. fine-tuning 2/255), seed $s"
   python -m training.train_hardened --data_root ./data_pad4 --epochs 8 --lr 2e-5 --seed "$s" --eps 0.00784 \
       --init "checkpoints/baseline4/seed${s}_best.pt" --out checkpoints/eps2_ft4 $EXTRA
-  touch "checkpoints/eps2_ft4/.seed${s}_done"
+  rm -f checkpoints/*/seed*_epoch*.pt; touch "checkpoints/eps2_ft4/.seed${s}_done"
 done
 DG="[$(echo $DEF_SEEDS | tr -d ' ')]"
 
