@@ -30,6 +30,10 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Real-world test log: when both are set, every Verify is saved to app/backend/test_log.csv
+  const [condition, setCondition] = useState("");
+  const [truth, setTruth] = useState("");
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
     let stream;
@@ -88,10 +92,13 @@ export default function App() {
       const res = await fetch(API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_b64: dataUrl }),
+        body: JSON.stringify({ image_b64: dataUrl, condition, truth }),
       });
       setResult(await res.json());
-      setStatus("Done.");
+      if (condition && truth) {
+        setCount((c) => c + 1);
+        setStatus(`Done. Logged try for "${condition}" (${truth}).`);
+      } else setStatus("Done.");
     } catch (e) {
       setResult(null);
       setStatus("Backend not reachable. Is uvicorn running on port 8000?");
@@ -145,6 +152,17 @@ export default function App() {
             </label>
           </div>
           <div style={{ color: colors.dim, marginTop: 8, fontSize: 14 }}>{status}</div>
+          <div style={{ marginTop: 16, padding: 12, background: colors.card, borderRadius: 10, maxWidth: 480 }}>
+            <div style={{ fontSize: 14, color: colors.text, marginBottom: 8 }}>Test log (optional): fill both to save every Verify</div>
+            <input value={condition} onChange={(e) => { setCondition(e.target.value); setCount(0); }}
+                   placeholder='condition, e.g. "laptop replay" or "real face, dim room"'
+                   style={{ width: "100%", padding: 8, borderRadius: 6, border: "none", marginBottom: 8, boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 16, alignItems: "center", color: colors.dim, fontSize: 14 }}>
+              <label><input type="radio" name="truth" checked={truth === "live"} onChange={() => setTruth("live")} /> really live</label>
+              <label><input type="radio" name="truth" checked={truth === "spoof"} onChange={() => setTruth("spoof")} /> really fake</label>
+              <span style={{ marginLeft: "auto" }}>{count} logged</span>
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {preview && <img src={preview} alt="what the model saw" width={224} height={224} style={{ borderRadius: 12 }} />}

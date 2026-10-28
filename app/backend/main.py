@@ -55,6 +55,8 @@ STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 class VerifyRequest(BaseModel):
     image_b64: str  # base64 JPEG/PNG of an already-cropped face (data URL prefix is fine)
+    condition: str = ""   # optional, for the real-world test log: e.g. "phone replay, max brightness"
+    truth: str = ""       # optional: "live" or "spoof" (what was really in front of the camera)
 
 
 def preprocess(image_b64: str) -> np.ndarray:
@@ -81,7 +83,27 @@ def verify(req: VerifyRequest):
     x = preprocess(req.image_b64)
     results = {name: score(sess, x, THRESHOLDS.get(name, 0.5)) for name, sess in sessions.items()}
     primary = results.get("hardened") or next(iter(results.values()))
+    if req.condition and req.truth:
+        log_trial(req.condition, req.truth, results)
     return {**primary, "models": results}
+
+
+LOG = HERE / "test_log.csv"
+
+
+def log_trial(condition, truth, results):
+    """Append one real-world test trial to test_log.csv (one row per verify)."""
+    import csv
+    import datetime
+    new = not LOG.exists()
+    with open(LOG, "a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(["time", "condition", "truth", "baseline_p_live", "baseline_says", "hardened_p_live", "hardened_says"])
+        b, h = results.get("baseline", {}), results.get("hardened", {})
+        w.writerow([datetime.datetime.now().isoformat(timespec="seconds"), condition, truth,
+                    round(b.get("prob_live", float("nan")), 4), "live" if b.get("is_live") else "spoof",
+                    round(h.get("prob_live", float("nan")), 4), "live" if h.get("is_live") else "spoof"])
 
 
 @app.get("/health")
